@@ -38,3 +38,4 @@ app.use('/api/rooms', roomRouter);
 
 // Centralized error handling
 app.use(errorHandler);
+

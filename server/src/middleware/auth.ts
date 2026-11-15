@@ -35,3 +35,4 @@ export const authenticate = (req: Request, res: Response, next: NextFunction): v
     return next(new ApiError('Invalid or expired token', 401, 'UNAUTHORIZED'));
   }
 };
+
