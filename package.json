@@ -1,0 +1,43 @@
+{
+  "name": "collab-editor-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Real-Time Collaborative Code Editor (Mini VS Code Live Share / Replit)",
+  "workspaces": [
+    "client",
+    "server",
+    "runner"
+  ],
+  "scripts": {
+    "dev:client": "npm run dev --workspace=client",
+    "dev:server": "npm run dev --workspace=server",
+    "dev:runner": "npm run dev --workspace=runner",
+    "dev": "concurrently -n \"CLIENT,SERVER,RUNNER\" -c \"cyan.bold,green.bold,yellow.bold\" \"npm run dev:client\" \"npm run dev:server\" \"npm run dev:runner\"",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "build": "npm run build --workspace=server && npm run build --workspace=runner && npm run build --workspace=client",
+    "test": "npm run test --workspace=server",
+    "typecheck": "npm run typecheck --workspace=client && npm run typecheck --workspace=server && npm run typecheck --workspace=runner"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.7.3"
+  },
+  "keywords": [
+    "collaborative-editor",
+    "monorepo",
+    "monaco",
+    "yjs",
+    "docker-sandbox"
+  ],
+  "author": "Senior Full-Stack Engineer",
+  "license": "MIT",
+  "allowScripts": {
+    "@prisma/client@5.22.0": true,
+    "@prisma/engines@5.22.0": true,
+    "prisma@5.22.0": true,
+    "esbuild@0.28.2": true,
+    "esbuild@0.25.12": true,
+    "leveldown": false
+  }
+}

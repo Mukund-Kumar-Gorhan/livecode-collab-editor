@@ -1,0 +1,59 @@
+version: "3.8"
+
+services:
+  # ============================================================================
+  # PostgreSQL 16 - Relational database for Users, Rooms, Members, and Logs
+  # ============================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: collab_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-collab_editor}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-collab_editor}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - collab_network
+
+  # ============================================================================
+  # Redis 7 - In-memory store for Pub/Sub, Yjs room presence, & job queues
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: collab_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - collab_network
+
+volumes:
+  postgres_data:
+    name: collab_postgres_data
+  redis_data:
+    name: collab_redis_data
+
+networks:
+  collab_network:
+    name: collab_network
+    driver: bridge
+

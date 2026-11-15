@@ -1,0 +1,123 @@
+// ==============================================================================
+// Prisma Schema - Real-Time Collaborative Code Editor
+// Datasource: PostgreSQL 16
+// ==============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ------------------------------------------------------------------------------
+// Enums
+// ------------------------------------------------------------------------------
+enum Role {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+enum ExecutionStatus {
+  QUEUED
+  RUNNING
+  SUCCESS
+  ERROR
+  TIMEOUT
+}
+
+// ------------------------------------------------------------------------------
+// Models
+// ------------------------------------------------------------------------------
+
+model User {
+  id            String         @id @default(uuid())
+  email         String         @unique
+  passwordHash  String
+  name          String?
+  avatarUrl     String?
+  refreshToken  String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  // Relations
+  ownedRooms    Room[]         @relation("RoomOwner")
+  memberships   RoomMember[]
+  executionLogs ExecutionLog[]
+
+  @@map("users")
+}
+
+model Room {
+  id            String         @id @default(uuid())
+  shortId       String         @unique
+  name          String
+  slug          String?
+  language      String         @default("python")
+  description   String?
+  isPublic      Boolean        @default(false)
+  ownerId       String
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  // Relations
+  owner         User           @relation("RoomOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members       RoomMember[]
+  snapshots     Snapshot[]
+  executionLogs ExecutionLog[]
+
+  @@index([ownerId])
+  @@index([shortId])
+  @@map("rooms")
+}
+
+model RoomMember {
+  id        String   @id @default(uuid())
+  roomId    String
+  userId    String
+  role      Role     @default(VIEWER)
+  joinedAt  DateTime @default(now())
+
+  // Relations
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+  @@index([userId])
+  @@index([roomId])
+  @@map("room_members")
+}
+
+model Snapshot {
+  id        String   @id @default(uuid())
+  roomId    String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+
+  // Relations
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, createdAt])
+  @@map("snapshots")
+}
+
+model ExecutionLog {
+  id        String          @id @default(uuid())
+  roomId    String
+  userId    String?
+  language  String
+  status    ExecutionStatus @default(QUEUED)
+  output    String?         @db.Text
+  createdAt DateTime        @default(now())
+
+  // Relations
+  room      Room            @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user      User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([roomId])
+  @@index([userId])
+  @@map("execution_logs")
+}
