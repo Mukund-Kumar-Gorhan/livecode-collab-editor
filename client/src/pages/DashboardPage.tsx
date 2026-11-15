@@ -189,13 +189,14 @@ export const DashboardPage: React.FC = () => {
                 type="text"
                 value={joinCode}
                 onChange={(e) => setJoinCode(e.target.value)}
-                placeholder="Enter room code..."
-                className="bg-[#1e1e1e] border border-[#3c3c3c] rounded-lg px-3 py-1.5 text-xs text-gray-200 placeholder-gray-500 font-mono focus:outline-none focus:border-sky-500 w-36 sm:w-44"
+                placeholder="Enter code to join..."
+                className="bg-[#1e1e1e] border border-[#3c3c3c] rounded-lg px-3 py-1.5 text-xs text-gray-200 placeholder-gray-400 font-mono focus:outline-none focus:border-sky-500 w-36 sm:w-44"
               />
               <button
                 type="submit"
-                disabled={isJoining}
-                className="bg-[#323233] hover:bg-[#3c3c3c] border border-[#3c3c3c] text-gray-200 hover:text-white px-3 py-1.5 rounded-lg text-xs font-medium flex items-center space-x-1.5 transition disabled:opacity-50"
+                disabled={!joinCode.trim() || isJoining}
+                className="bg-[#323233] hover:bg-[#3c3c3c] border border-[#3c3c3c] text-gray-200 hover:text-white px-3 py-1.5 rounded-lg text-xs font-medium flex items-center space-x-1.5 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Join room with code"
               >
                 {isJoining ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -283,7 +284,11 @@ export const DashboardPage: React.FC = () => {
                       </div>
 
                       {/* Room Title */}
-                      <h3 className="text-sm font-bold text-gray-100 group-hover:text-sky-300 transition line-clamp-1">
+                      <h3
+                        onClick={() => navigate(`/room/${room.shortId}`)}
+                        className="text-sm font-bold text-gray-100 group-hover:text-sky-300 transition line-clamp-1 cursor-pointer"
+                        title="Open room editor"
+                      >
                         {room.name}
                       </h3>
 
