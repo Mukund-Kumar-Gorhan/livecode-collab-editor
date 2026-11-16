@@ -1,57 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { EditorHeader } from '../components/EditorHeader';
+import * as Y from 'yjs';
+import { WebsocketProvider } from 'y-websocket';
+import { EditorHeader, ActiveUser } from '../components/EditorHeader';
 import { CodeEditor } from '../components/CodeEditor';
 import { SupportedLanguage, Room, RoomRole } from '../types';
 import { roomApi } from '../services/api';
+import { useAuthStore } from '../store/authStore';
 import { toast } from '../store/toastStore';
+import { getUserColor } from '../utils/colors';
 import { Terminal, CheckCircle2, Loader2, AlertCircle } from 'lucide-react';
-
-const STARTER_CODE: Record<SupportedLanguage, string> = {
-  python: `# Welcome to LiveCode - Python 3.11 Workspace
-def fibonacci(n: int):
-    a, b = 0, 1
-    for _ in range(n):
-        yield a
-        a, b = b, a + b
-
-print("Hello, Collaborative World from Python!")
-print("Fibonacci sequence:", list(fibonacci(10)))
-`,
-  javascript: `// Welcome to LiveCode - Node.js Workspace
-function greet(team) {
-  return \`Hello, \${team}! Real-time collaborative coding is live.\`;
-}
-
-console.log(greet("Senior Engineers"));
-console.log("Memory usage:", process.memoryUsage().heapUsed, "bytes");
-`,
-  java: `// Welcome to LiveCode - Java 17 Workspace
-public class Main {
-    public static void main(String[] args) {
-        System.out.println("Hello from Java 17 Sandbox!");
-        System.out.println("JVM Architecture: " + System.getProperty("os.arch"));
-    }
-}
-`,
-  cpp: `// Welcome to LiveCode - C++ (g++ 13) Workspace
-#include <iostream>
-#include <vector>
-#include <numeric>
-
-int main() {
-    std::cout << "Hello from C++ Sandbox!" << std::endl;
-    std::vector<int> numbers = {1, 2, 3, 4, 5};
-    int sum = std::accumulate(numbers.begin(), numbers.end(), 0);
-    std::cout << "Sum of vector: " << sum << std::endl;
-    return 0;
-}
-`,
-};
 
 export const RoomPage: React.FC = () => {
   const { shortId } = useParams<{ shortId: string }>();
   const navigate = useNavigate();
+  const { user, accessToken } = useAuthStore();
 
   const [room, setRoom] = useState<Room | null>(null);
   const [role, setRole] = useState<RoomRole | null>(null);
@@ -59,12 +22,20 @@ export const RoomPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const [language, setLanguage] = useState<SupportedLanguage>('python');
-  const [code, setCode] = useState<string>(STARTER_CODE.python);
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'connecting' | 'disconnected'>('connecting');
+  const [activeUsers, setActiveUsers] = useState<ActiveUser[]>([]);
+  const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const [consoleOutput, setConsoleOutput] = useState<string>(
     `[LiveCode Terminal Ready]\nWorkspace initialized for room.\nSelect language, edit code, and click 'Run'.`
   );
   const [isRunning, setIsRunning] = useState<boolean>(false);
 
+  // Yjs and WebsocketProvider references
+  const ydocRef = useRef<Y.Doc | null>(null);
+  const providerRef = useRef<WebsocketProvider | null>(null);
+  const [collabReady, setCollabReady] = useState(false);
+
+  // Fetch room details on initial load
   useEffect(() => {
     if (!shortId) return;
 
@@ -76,9 +47,8 @@ export const RoomPage: React.FC = () => {
         setRoom(res.data.room);
         setRole(res.data.role);
 
-        if (res.data.room.language && STARTER_CODE[res.data.room.language]) {
+        if (res.data.room.language) {
           setLanguage(res.data.room.language);
-          setCode(STARTER_CODE[res.data.room.language]);
         }
       } catch (err: any) {
         const msg = err.response?.data?.message || 'Room not found or access denied';
@@ -92,10 +62,100 @@ export const RoomPage: React.FC = () => {
     fetchRoom();
   }, [shortId]);
 
+  // Initialize Yjs and WebSocket provider once room and auth token are available
+  useEffect(() => {
+    if (!shortId || !accessToken || !room) return;
+
+    const ydoc = new Y.Doc();
+    ydocRef.current = ydoc;
+
+    // Build WebSocket server URL
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsHost = window.location.hostname === 'localhost' ? 'localhost:5000' : window.location.host;
+    const serverUrl = `${wsProtocol}//${wsHost}/collab`;
+
+    const provider = new WebsocketProvider(serverUrl, shortId, ydoc, {
+      params: { token: accessToken },
+    });
+    providerRef.current = provider;
+
+    // Track connection lifecycle
+    provider.on('status', ({ status }: { status: 'connected' | 'connecting' | 'disconnected' }) => {
+      setConnectionStatus(status);
+    });
+
+    // Set local awareness user details
+    const userColor = getUserColor(user?.id || user?.email || 'guest');
+    const userName = user?.name || user?.email?.split('@')[0] || 'Anonymous';
+    provider.awareness.setLocalStateField('user', {
+      name: userName,
+      color: userColor,
+      userId: user?.id,
+    });
+
+    // Handle peer awareness updates (active users & typing indicators)
+    const handleAwarenessChange = () => {
+      const states = provider.awareness.getStates();
+      const active: ActiveUser[] = [];
+      const typing: string[] = [];
+
+      states.forEach((state: any, clientId: number) => {
+        if (state.user) {
+          const isSelf = clientId === ydoc.clientID;
+          active.push({
+            clientId,
+            name: state.user.name || 'Anonymous',
+            color: state.user.color || '#0ea5e9',
+            isCurrentUser: isSelf,
+          });
+
+          if (!isSelf && state.isTyping) {
+            typing.push(state.user.name || 'Anonymous');
+          }
+        }
+      });
+
+      setActiveUsers(active);
+      setTypingUsers(typing);
+    };
+
+    provider.awareness.on('change', handleAwarenessChange);
+
+    // Sync language selection via Y.Map
+    const ymeta = ydoc.getMap('metadata');
+    const handleMetaChange = () => {
+      const syncedLang = ymeta.get('language') as SupportedLanguage;
+      if (syncedLang && syncedLang !== language) {
+        setLanguage(syncedLang);
+      }
+    };
+    ymeta.observe(handleMetaChange);
+
+    // Seed local language into metadata if not present
+    if (room.language && !ymeta.get('language')) {
+      ymeta.set('language', room.language);
+    }
+
+    setCollabReady(true);
+
+    return () => {
+      provider.awareness.off('change', handleAwarenessChange);
+      ymeta.unobserve(handleMetaChange);
+      provider.destroy();
+      ydoc.destroy();
+      ydocRef.current = null;
+      providerRef.current = null;
+      setCollabReady(false);
+    };
+  }, [shortId, accessToken, room]);
+
   const handleLanguageChange = (newLang: SupportedLanguage) => {
+    if (role === 'VIEWER') return;
     setLanguage(newLang);
-    setCode(STARTER_CODE[newLang]);
-    setConsoleOutput(`[Switched to ${newLang.toUpperCase()}]\nEditor buffer reloaded with ${newLang} template.`);
+    if (ydocRef.current) {
+      ydocRef.current.getMap('metadata').set('language', newLang);
+    }
+    setConsoleOutput(`[Language Changed] Workspace switched to ${newLang.toUpperCase()}`);
   };
 
   const handleRunCode = () => {
@@ -139,7 +199,7 @@ export const RoomPage: React.FC = () => {
 
   return (
     <div className="h-screen w-screen flex flex-col bg-[#1e1e1e] text-[#cccccc] overflow-hidden select-none">
-      {/* Top Navigation Bar */}
+      {/* Top Navigation Bar with Live Collaboration Stats */}
       <EditorHeader
         room={room}
         role={role}
@@ -148,16 +208,20 @@ export const RoomPage: React.FC = () => {
         onRunCode={handleRunCode}
         isRunning={isRunning}
         onBackToDashboard={() => navigate('/dashboard')}
+        connectionStatus={connectionStatus}
+        activeUsers={activeUsers}
+        typingUsers={typingUsers}
       />
 
       {/* Main Workspace (Editor + Output Console) */}
       <div className="flex-1 flex flex-col min-h-0">
-        {/* Editor Area */}
+        {/* Editor Area with Monaco & Yjs Binding */}
         <div className="flex-1 min-h-0">
           <CodeEditor
             language={language}
-            code={code}
-            onChange={(val) => setCode(val || '')}
+            ydoc={collabReady ? ydocRef.current : null}
+            provider={collabReady ? providerRef.current : null}
+            isViewer={role === 'VIEWER'}
           />
         </div>
 
