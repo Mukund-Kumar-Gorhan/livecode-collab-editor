@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 import path from 'path';
+import { z } from 'zod';
 import { executionQueue } from './queue/executionQueue.js';
 import { SUPPORTED_LANGUAGES } from './languages/config.js';
 
@@ -18,10 +19,18 @@ app.use(helmet());
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 
+const executeSchema = z.object({
+  language: z.enum(['python', 'javascript', 'java', 'cpp']),
+  code: z
+    .string()
+    .min(1, 'Field "code" is required')
+    .max(50 * 1024, 'Code size exceeds 50KB limit'),
+});
+
 /**
  * Health Check Endpoint
  */
-app.get('/health', (req: Request, res: Response) => {
+app.get('/health', (_req: Request, res: Response) => {
   res.status(200).json({
     status: 'ok',
     service: 'collab-editor-runner',
@@ -33,36 +42,45 @@ app.get('/health', (req: Request, res: Response) => {
 
 /**
  * POST /execute
- * Stub execution endpoint simulating Docker sandbox runner.
- * Planned constraints: --network=none --memory=128m --cpus=0.5 --pids-limit=64, 5s timeout, non-root user.
+ * Executes code inside isolated ephemeral Docker container.
+ * Limits: --network=none --memory=128m --cpus=0.5 --pids-limit=64 --read-only --tmpfs /tmp --cap-drop=ALL
  */
 app.post('/execute', async (req: Request, res: Response): Promise<void> => {
-  const { language, code, stdin } = req.body;
+  const parseResult = executeSchema.safeParse(req.body);
 
-  if (!language || typeof code !== 'string') {
+  if (!parseResult.success) {
+    const errorMsg = parseResult.error.issues?.[0]?.message || parseResult.error.message || 'Invalid execution request';
     res.status(400).json({
-      success: false,
-      error: 'Invalid request body. Fields "language" and "code" are required.',
+      error: errorMsg,
+      details: parseResult.error.format ? parseResult.error.format() : parseResult.error.issues,
     });
     return;
   }
+
+  const { language, code } = parseResult.data;
 
   try {
     const result = await executionQueue.enqueue({
       language,
       code,
-      stdin,
     });
 
     res.status(200).json({
-      success: true,
-      data: result,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      exitCode: result.exitCode,
+      durationMs: result.durationMs,
+      timedOut: result.timedOut,
     });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown execution failure';
+    const message = err instanceof Error ? err.message : 'Execution failed';
     res.status(500).json({
-      success: false,
       error: message,
+      stdout: '',
+      stderr: message,
+      exitCode: 1,
+      durationMs: 0,
+      timedOut: false,
     });
   }
 });
@@ -72,4 +90,3 @@ app.listen(PORT, HOST, () => {
   console.log(`[Runner] Health check: http://${HOST}:${PORT}/health`);
   console.log(`[Runner] Execute endpoint: POST http://${HOST}:${PORT}/execute`);
 });
-

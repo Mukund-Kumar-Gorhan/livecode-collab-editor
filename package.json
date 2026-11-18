@@ -16,6 +16,7 @@
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "build": "npm run build --workspace=server && npm run build --workspace=runner && npm run build --workspace=client",
+    "sandbox:build": "docker build -t collab-sandbox-python:latest -f docker/sandbox/python.Dockerfile docker/sandbox && docker build -t collab-sandbox-node:latest -f docker/sandbox/node.Dockerfile docker/sandbox && docker build -t collab-sandbox-java:latest -f docker/sandbox/java.Dockerfile docker/sandbox && docker build -t collab-sandbox-cpp:latest -f docker/sandbox/cpp.Dockerfile docker/sandbox",
     "test": "npm run test --workspace=server",
     "typecheck": "npm run typecheck --workspace=client && npm run typecheck --workspace=server && npm run typecheck --workspace=runner"
   },

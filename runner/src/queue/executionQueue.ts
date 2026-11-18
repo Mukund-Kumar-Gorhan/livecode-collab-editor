@@ -1,23 +1,16 @@
 import { ExecuteOptions, ExecutionResult, dockerExecutor } from '../executor/dockerExecutor.js';
 
-export interface QueuedJob {
-  id: string;
-  options: ExecuteOptions;
-  createdAt: Date;
-}
-
-/**
- * In-memory execution queue stub.
- * In production: backed by Redis / BullMQ to handle concurrency bursts and rate limiting.
- */
 export class ExecutionQueue {
   private activeJobs = 0;
-  private readonly maxConcurrency = 4;
+  private readonly maxConcurrency = 3;
+  private queue: Array<() => void> = [];
 
   async enqueue(options: ExecuteOptions): Promise<ExecutionResult> {
-    // Basic concurrency guard
-    while (this.activeJobs >= this.maxConcurrency) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
+    // If maximum concurrency reached, wait in queue
+    if (this.activeJobs >= this.maxConcurrency) {
+      await new Promise<void>((resolve) => {
+        this.queue.push(resolve);
+      });
     }
 
     this.activeJobs++;
@@ -25,16 +18,21 @@ export class ExecutionQueue {
       return await dockerExecutor.execute(options);
     } finally {
       this.activeJobs--;
+      // Dispatch next waiting job from queue
+      const nextJob = this.queue.shift();
+      if (nextJob) {
+        nextJob();
+      }
     }
   }
 
   getStats() {
     return {
       activeJobs: this.activeJobs,
+      queuedJobs: this.queue.length,
       maxConcurrency: this.maxConcurrency,
     };
   }
 }
 
 export const executionQueue = new ExecutionQueue();
-

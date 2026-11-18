@@ -1,23 +1,19 @@
 export interface LanguageConfig {
-  id: string;
+  id: 'python' | 'javascript' | 'java' | 'cpp';
   name: string;
   dockerImage: string;
   fileExtension: string;
-  compileCommand?: (sourceFile: string) => string;
-  runCommand: (targetFile: string) => string;
+  getRunArgs: (filename: string, className?: string) => string[];
   defaultTimeoutMs: number;
 }
 
-/**
- * Supported Sandbox Languages and Execution Configs
- */
 export const SUPPORTED_LANGUAGES: Record<string, LanguageConfig> = {
   python: {
     id: 'python',
     name: 'Python 3.11',
     dockerImage: 'collab-sandbox-python:latest',
     fileExtension: 'py',
-    runCommand: (sourceFile) => `python3 ${sourceFile}`,
+    getRunArgs: (filename: string) => ['python3', `/sandbox/${filename}`],
     defaultTimeoutMs: 5000,
   },
   javascript: {
@@ -25,7 +21,7 @@ export const SUPPORTED_LANGUAGES: Record<string, LanguageConfig> = {
     name: 'Node.js 20',
     dockerImage: 'collab-sandbox-node:latest',
     fileExtension: 'js',
-    runCommand: (sourceFile) => `node ${sourceFile}`,
+    getRunArgs: (filename: string) => ['node', `/sandbox/${filename}`],
     defaultTimeoutMs: 5000,
   },
   java: {
@@ -33,18 +29,23 @@ export const SUPPORTED_LANGUAGES: Record<string, LanguageConfig> = {
     name: 'Java 17',
     dockerImage: 'collab-sandbox-java:latest',
     fileExtension: 'java',
-    compileCommand: (sourceFile) => `javac ${sourceFile}`,
-    runCommand: () => `java Main`,
-    defaultTimeoutMs: 8000,
+    getRunArgs: (filename: string, className: string = 'Main') => [
+      'sh',
+      '-c',
+      `javac -J-Xmx64m -J-XX:TieredStopAtLevel=1 -d /tmp /sandbox/${filename} && java -Xmx64m -XX:TieredStopAtLevel=1 -cp /tmp ${className}`,
+    ],
+    defaultTimeoutMs: 5000,
   },
   cpp: {
     id: 'cpp',
     name: 'C++ (g++ 13)',
     dockerImage: 'collab-sandbox-cpp:latest',
     fileExtension: 'cpp',
-    compileCommand: (sourceFile) => `g++ -O2 ${sourceFile} -o /tmp/main`,
-    runCommand: () => `/tmp/main`,
+    getRunArgs: (filename: string) => [
+      'sh',
+      '-c',
+      `g++ -O2 /sandbox/${filename} -o /tmp/main && /tmp/main`,
+    ],
     defaultTimeoutMs: 5000,
   },
 };
-

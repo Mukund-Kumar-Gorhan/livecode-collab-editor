@@ -1,5 +1,5 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { Room, RoomRole, SupportedLanguage, User } from '../types';
+import { Room, RoomRole, SupportedLanguage, User, RunResult } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 
@@ -176,6 +176,29 @@ export const roomApi = {
 
   deleteRoom: async (shortId: string) => {
     const res = await apiClient.delete<{ success: boolean; message: string }>(`/rooms/${shortId}`);
+    return res.data;
+  },
+
+  runCode: async (shortId: string) => {
+    const res = await apiClient.post<{
+      success: boolean;
+      message: string;
+      data: RunResult;
+    }>(`/rooms/${shortId}/run`);
+    return res.data;
+  },
+};
+
+// Runner service API
+export const runnerApi = {
+  checkHealth: async () => {
+    const runnerUrl = import.meta.env.VITE_RUNNER_URL || 'http://localhost:4000';
+    const res = await axios.get<{
+      status: string;
+      service: string;
+      supportedLanguages: string[];
+      queue: { activeJobs: number; queuedJobs: number; maxConcurrency: number };
+    }>(`${runnerUrl}/health`, { timeout: 3000 });
     return res.data;
   },
 };

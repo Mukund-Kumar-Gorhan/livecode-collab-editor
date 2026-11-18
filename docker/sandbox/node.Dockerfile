@@ -19,5 +19,5 @@ RUN chown -R node:node /sandbox
 # Drop root privileges (built-in alpine 'node' user)
 USER node
 
-ENTRYPOINT ["node"]
+CMD ["node"]
 

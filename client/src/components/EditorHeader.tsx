@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Play, Share2, Users, Circle, Code2, ArrowLeft, Check, Eye, PenLine } from 'lucide-react';
+import { Play, Share2, Users, Circle, Code2, ArrowLeft, Check, Eye, PenLine, Loader2 } from 'lucide-react';
 import { Room, RoomRole, SupportedLanguage } from '../types';
 import { toast } from '../store/toastStore';
 import { getUserInitials } from '../utils/colors';
@@ -162,11 +162,15 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
         {/* Run Button */}
         <button
           onClick={onRunCode}
-          disabled={isRunning}
-          className="flex items-center space-x-1.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold px-3 py-1.5 rounded transition shadow-sm"
-          title="Run code in Docker Sandbox"
+          disabled={isRunning || isViewer}
+          className="flex items-center space-x-1.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold px-3 py-1.5 rounded transition shadow-sm"
+          title={isViewer ? 'Code execution disabled for Viewers' : 'Run code in Docker Sandbox'}
         >
-          <Play className="w-3.5 h-3.5 fill-current" />
+          {isRunning ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <Play className="w-3.5 h-3.5 fill-current" />
+          )}
           <span>{isRunning ? 'Running...' : 'Run'}</span>
         </button>
       </div>

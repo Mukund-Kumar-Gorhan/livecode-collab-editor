@@ -4,8 +4,8 @@ import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import { EditorHeader, ActiveUser } from '../components/EditorHeader';
 import { CodeEditor } from '../components/CodeEditor';
-import { SupportedLanguage, Room, RoomRole } from '../types';
-import { roomApi } from '../services/api';
+import { SupportedLanguage, Room, RoomRole, RunResult } from '../types';
+import { roomApi, runnerApi } from '../services/api';
 import { useAuthStore } from '../store/authStore';
 import { toast } from '../store/toastStore';
 import { getUserColor } from '../utils/colors';
@@ -23,17 +23,39 @@ export const RoomPage: React.FC = () => {
 
   const [language, setLanguage] = useState<SupportedLanguage>('python');
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'connecting' | 'disconnected'>('connecting');
+  const [runnerStatus, setRunnerStatus] = useState<'connected' | 'checking' | 'disconnected'>('checking');
   const [activeUsers, setActiveUsers] = useState<ActiveUser[]>([]);
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
+  const [latestRun, setLatestRun] = useState<RunResult | null>(null);
   const [consoleOutput, setConsoleOutput] = useState<string>(
     `[LiveCode Terminal Ready]\nWorkspace initialized for room.\nSelect language, edit code, and click 'Run'.`
   );
   const [isRunning, setIsRunning] = useState<boolean>(false);
 
-  // Yjs and WebsocketProvider references
+  // Yjs: ydoc + provider ko STATE me rakha hai taaki change hote hi editor re-render ho
   const ydocRef = useRef<Y.Doc | null>(null);
-  const providerRef = useRef<WebsocketProvider | null>(null);
-  const [collabReady, setCollabReady] = useState(false);
+  const [collab, setCollab] = useState<{ ydoc: Y.Doc; provider: WebsocketProvider } | null>(null);
+  const hasToken = !!accessToken;
+
+  // Poll/check runner health on mount and periodically
+  useEffect(() => {
+    let isMounted = true;
+    const checkRunnerHealth = async () => {
+      try {
+        await runnerApi.checkHealth();
+        if (isMounted) setRunnerStatus('connected');
+      } catch {
+        if (isMounted) setRunnerStatus('disconnected');
+      }
+    };
+
+    checkRunnerHealth();
+    const interval = setInterval(checkRunnerHealth, 15000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   // Fetch room details on initial load
   useEffect(() => {
@@ -62,10 +84,11 @@ export const RoomPage: React.FC = () => {
     fetchRoom();
   }, [shortId]);
 
-  // Initialize Yjs and WebSocket provider once room and auth token are available
+  // Yjs + WebSocket provider (token refresh par dobara connect nahi hoga)
   useEffect(() => {
-    if (!shortId || !accessToken || !room) return;
+    if (!shortId || !hasToken || !room) return;
 
+    const token = useAuthStore.getState().accessToken;
     const ydoc = new Y.Doc();
     ydocRef.current = ydoc;
 
@@ -75,9 +98,8 @@ export const RoomPage: React.FC = () => {
     const serverUrl = `${wsProtocol}//${wsHost}/collab`;
 
     const provider = new WebsocketProvider(serverUrl, shortId, ydoc, {
-      params: { token: accessToken },
+      params: { token: token || '' },
     });
-    providerRef.current = provider;
 
     // Track connection lifecycle
     provider.on('status', ({ status }: { status: 'connected' | 'connecting' | 'disconnected' }) => {
@@ -118,36 +140,52 @@ export const RoomPage: React.FC = () => {
       setActiveUsers(active);
       setTypingUsers(typing);
     };
-
     provider.awareness.on('change', handleAwarenessChange);
+    handleAwarenessChange();
 
-    // Sync language selection via Y.Map
+    // Language sync via Y.Map
     const ymeta = ydoc.getMap('metadata');
     const handleMetaChange = () => {
-      const syncedLang = ymeta.get('language') as SupportedLanguage;
-      if (syncedLang && syncedLang !== language) {
-        setLanguage(syncedLang);
-      }
+      const syncedLang = ymeta.get('language') as SupportedLanguage | undefined;
+      if (syncedLang) setLanguage(syncedLang);
     };
     ymeta.observe(handleMetaChange);
 
-    // Seed local language into metadata if not present
-    if (room.language && !ymeta.get('language')) {
-      ymeta.set('language', room.language);
-    }
+    // Observe execution results via Y.Doc Y.Map("run")
+    const yrun = ydoc.getMap('run');
+    const handleRunUpdate = () => {
+      const latest = yrun.get('latest') as RunResult | undefined;
+      if (latest) {
+        setLatestRun(latest);
+      }
+    };
+    yrun.observe(handleRunUpdate);
+    handleRunUpdate();
 
-    setCollabReady(true);
+    // Seed sirf server se sync hone ke BAAD, warna doosre ka language override ho jata hai
+    const handleSync = (isSynced: boolean) => {
+      if (!isSynced) return;
+      if (!ymeta.get('language') && room.language) {
+        ymeta.set('language', room.language);
+      }
+      handleMetaChange();
+      handleRunUpdate();
+    };
+    provider.on('sync', handleSync);
+
+    setCollab({ ydoc, provider });
 
     return () => {
+      provider.off('sync', handleSync);
       provider.awareness.off('change', handleAwarenessChange);
       ymeta.unobserve(handleMetaChange);
+      yrun.unobserve(handleRunUpdate);
       provider.destroy();
       ydoc.destroy();
       ydocRef.current = null;
-      providerRef.current = null;
-      setCollabReady(false);
+      setCollab(null);
     };
-  }, [shortId, accessToken, room]);
+  }, [shortId, hasToken, room]);
 
   const handleLanguageChange = (newLang: SupportedLanguage) => {
     if (role === 'VIEWER') return;
@@ -158,14 +196,23 @@ export const RoomPage: React.FC = () => {
     setConsoleOutput(`[Language Changed] Workspace switched to ${newLang.toUpperCase()}`);
   };
 
-  const handleRunCode = () => {
+  const handleRunCode = async () => {
+    if (!shortId) return;
+    if (role === 'VIEWER') {
+      toast.error('Viewers are not permitted to run code');
+      return;
+    }
+    if (isRunning) return;
+
     setIsRunning(true);
-    setConsoleOutput(
-      `[Runner] Dispatching job for ${language.toUpperCase()}...\nPlanned docker sandbox limits:\n  --network=none --memory=128m --cpus=0.5 --pids-limit=64 --timeout=5s\n\n[Status] Simulated execution success:\nHello, World from ${language.toUpperCase()}!\nExecution time: 42ms | Exit Code: 0`
-    );
-    setTimeout(() => {
+    try {
+      await roomApi.runCode(shortId);
+    } catch (err: any) {
+      const msg = err.response?.data?.message || err.message || 'Execution failed';
+      toast.error(msg);
+    } finally {
       setIsRunning(false);
-    }, 400);
+    }
   };
 
   if (isLoading) {
@@ -219,26 +266,102 @@ export const RoomPage: React.FC = () => {
         <div className="flex-1 min-h-0">
           <CodeEditor
             language={language}
-            ydoc={collabReady ? ydocRef.current : null}
-            provider={collabReady ? providerRef.current : null}
+            ydoc={collab?.ydoc ?? null}
+            provider={collab?.provider ?? null}
             isViewer={role === 'VIEWER'}
           />
         </div>
 
         {/* Bottom Output Console Panel */}
-        <div className="h-44 bg-[#181818] border-t border-[#3c3c3c] flex flex-col">
+        <div className="h-48 bg-[#181818] border-t border-[#3c3c3c] flex flex-col">
           <div className="h-7 bg-[#252526] px-3 flex items-center justify-between border-b border-[#3c3c3c] text-xs select-none">
             <div className="flex items-center space-x-2 text-gray-300">
               <Terminal className="w-3.5 h-3.5 text-sky-400" />
               <span className="font-semibold text-[11px] uppercase tracking-wider">Console Output</span>
             </div>
-            <div className="flex items-center space-x-1 text-emerald-400 text-[11px]">
-              <CheckCircle2 className="w-3 h-3" />
-              <span>Runner Service: Connected (Stub)</span>
-            </div>
+
+            {/* Real Runner Health Indicator */}
+            {runnerStatus === 'connected' && (
+              <div className="flex items-center space-x-1.5 text-emerald-400 text-[11px]">
+                <CheckCircle2 className="w-3 h-3" />
+                <span>Runner: Ready (Docker Sandbox)</span>
+              </div>
+            )}
+            {runnerStatus === 'checking' && (
+              <div className="flex items-center space-x-1.5 text-amber-400 text-[11px]">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                <span>Runner: Checking health...</span>
+              </div>
+            )}
+            {runnerStatus === 'disconnected' && (
+              <div className="flex items-center space-x-1.5 text-red-400 text-[11px]" title="Runner service unreachable at http://localhost:4000">
+                <AlertCircle className="w-3 h-3" />
+                <span>Runner: Offline</span>
+              </div>
+            )}
           </div>
-          <div className="flex-1 p-3 font-mono text-xs text-gray-300 overflow-y-auto whitespace-pre-wrap selection:bg-sky-900 leading-relaxed">
-            {consoleOutput}
+
+          {/* Console Content: Observes latestRun from Y.Map("run") */}
+          <div className="flex-1 p-3 font-mono text-xs overflow-y-auto selection:bg-sky-900 leading-relaxed">
+            {latestRun ? (
+              <div className="flex flex-col space-y-2">
+                {/* Meta details bar */}
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] pb-1.5 border-b border-[#2d2d2d] text-gray-400">
+                  <span className="text-sky-400 font-semibold">
+                    Run by {latestRun.runBy}
+                  </span>
+                  <span>•</span>
+                  <span>
+                    Duration: <span className="text-gray-200">{latestRun.durationMs}ms</span>
+                  </span>
+                  <span>•</span>
+                  <span>
+                    Exit code:{' '}
+                    <span className={latestRun.exitCode === 0 ? 'text-emerald-400' : 'text-red-400'}>
+                      {latestRun.exitCode ?? 'none'}
+                    </span>
+                  </span>
+                  {latestRun.timedOut && (
+                    <span className="bg-amber-950/80 text-amber-400 border border-amber-500/40 px-2 py-0.5 rounded font-semibold text-[10px] animate-pulse">
+                      Time limit exceeded (5s)
+                    </span>
+                  )}
+                </div>
+
+                {/* Explicit timeout notice */}
+                {latestRun.timedOut && (
+                  <div className="text-amber-400 font-semibold text-xs flex items-center space-x-1.5 bg-amber-950/20 p-2 rounded border border-amber-500/30">
+                    <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span>Time limit exceeded: Execution exceeded 5.0 seconds and container was terminated.</span>
+                  </div>
+                )}
+
+                {/* Standard Output */}
+                {latestRun.stdout && (
+                  <div className="text-gray-200 whitespace-pre-wrap">
+                    {latestRun.stdout}
+                  </div>
+                )}
+
+                {/* Standard Error (Red) */}
+                {latestRun.stderr && (
+                  <div className="text-red-400 whitespace-pre-wrap bg-red-950/20 p-2 rounded border border-red-500/20">
+                    {latestRun.stderr}
+                  </div>
+                )}
+
+                {/* Empty output notice */}
+                {!latestRun.stdout && !latestRun.stderr && !latestRun.timedOut && (
+                  <div className="text-gray-500 italic text-xs">
+                    (Process exited with code {latestRun.exitCode} without producing console output)
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-gray-400 whitespace-pre-wrap">
+                {consoleOutput}
+              </div>
+            )}
           </div>
         </div>
       </div>

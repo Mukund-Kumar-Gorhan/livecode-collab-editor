@@ -68,3 +68,15 @@ export interface RoomState {
   peers: UserPresence[];
   isConnected: boolean;
 }
+
+export interface RunResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  durationMs: number;
+  timedOut: boolean;
+  runBy: string;
+  runById?: string;
+  timestamp: number;
+}
+

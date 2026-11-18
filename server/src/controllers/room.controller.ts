@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { prisma } from '../config/prisma.js';
 import { ApiError } from '../utils/errors.js';
 import { generateShortId } from '../utils/nanoid.js';
+import { config } from '../config/index.js';
+import { getOrCreateDoc } from '../sockets/collab.js';
 
 const createRoomSchema = z.object({
   name: z.string().min(1, 'Room name is required').max(100),
@@ -300,6 +302,134 @@ export const deleteRoom = async (req: Request, res: Response, next: NextFunction
     res.status(200).json({
       success: true,
       message: 'Room deleted successfully',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/rooms/:shortId/run
+ * JWT protected. Executes the room's current code from Y.Doc in the Docker sandbox runner.
+ * Allowed roles: OWNER, EDITOR. Role VIEWER returns 403 Forbidden.
+ */
+export const runRoomCode = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (!req.user) {
+      throw new ApiError('Unauthorized', 401, 'UNAUTHORIZED');
+    }
+
+    const { shortId } = req.params;
+
+    const room = await prisma.room.findUnique({
+      where: { shortId },
+      include: {
+        members: true,
+      },
+    });
+
+    if (!room) {
+      throw new ApiError('Room not found', 404, 'ROOM_NOT_FOUND');
+    }
+
+    // Role check: OWNER or EDITOR allowed. VIEWER rejected with 403.
+    let userRole: 'OWNER' | 'EDITOR' | 'VIEWER' | null = null;
+    if (room.ownerId === req.user.id) {
+      userRole = 'OWNER';
+    } else {
+      const member = room.members.find((m) => m.userId === req.user?.id);
+      if (member) {
+        userRole = member.role;
+      }
+    }
+
+    if (!userRole) {
+      throw new ApiError('You are not a member of this room', 403, 'FORBIDDEN');
+    }
+
+    if (userRole === 'VIEWER') {
+      throw new ApiError('Viewers are not permitted to run code', 403, 'FORBIDDEN');
+    }
+
+    // Read current code and language directly from server Y.Doc
+    const doc = await getOrCreateDoc(shortId, room);
+    const code = doc.getText('monaco').toString();
+    const metadata = doc.getMap('metadata');
+    const language = (metadata.get('language') as string) || room.language || 'python';
+
+    // Dispatch execution to Runner service
+    let runnerResult: {
+      stdout: string;
+      stderr: string;
+      exitCode: number | null;
+      durationMs: number;
+      timedOut: boolean;
+    };
+
+    try {
+      const runnerRes = await fetch(`${config.runnerUrl}/execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ language, code }),
+      });
+
+      if (!runnerRes.ok) {
+        const errorBody = (await runnerRes.json().catch(() => ({}))) as { error?: string };
+        throw new ApiError(errorBody.error || 'Runner execution failed', runnerRes.status, 'RUNNER_ERROR');
+      }
+
+      runnerResult = (await runnerRes.json()) as typeof runnerResult;
+    } catch (fetchErr: unknown) {
+      if (fetchErr instanceof ApiError) throw fetchErr;
+      const msg = fetchErr instanceof Error ? fetchErr.message : 'Failed to reach Runner service';
+      throw new ApiError(`Runner service error: ${msg}`, 502, 'RUNNER_UNAVAILABLE');
+    }
+
+    // Determine execution log status
+    let status: 'SUCCESS' | 'ERROR' | 'TIMEOUT' = 'SUCCESS';
+    if (runnerResult.timedOut) {
+      status = 'TIMEOUT';
+    } else if (runnerResult.exitCode !== 0) {
+      status = 'ERROR';
+    }
+
+    const combinedOutput = [
+      runnerResult.stdout ? runnerResult.stdout.trimEnd() : '',
+      runnerResult.stderr ? runnerResult.stderr.trimEnd() : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    // Save in ExecutionLog table
+    await prisma.executionLog.create({
+      data: {
+        roomId: room.id,
+        userId: req.user.id,
+        language,
+        status,
+        output: combinedOutput,
+      },
+    });
+
+    // Write result to Y.Doc Y.Map("run") so all connected clients observe it in real time
+    const runBy = req.user.email.split('@')[0] || 'User';
+    const runPayload = {
+      stdout: runnerResult.stdout,
+      stderr: runnerResult.stderr,
+      exitCode: runnerResult.exitCode,
+      durationMs: runnerResult.durationMs,
+      timedOut: runnerResult.timedOut,
+      runBy,
+      runById: req.user.id,
+      timestamp: Date.now(),
+    };
+
+    doc.getMap('run').set('latest', runPayload);
+
+    res.status(200).json({
+      success: true,
+      message: 'Code executed successfully',
+      data: runPayload,
     });
   } catch (error) {
     next(error);

@@ -22,5 +22,5 @@ RUN chown -R sandbox:sandbox /sandbox
 USER sandbox
 
 # Default entrypoint for script execution
-ENTRYPOINT ["python3"]
+CMD ["python3"]
 

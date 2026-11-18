@@ -6,8 +6,10 @@ import {
   joinRoom,
   updateMemberRole,
   deleteRoom,
+  runRoomCode,
 } from '../controllers/room.controller.js';
 import { authenticate } from '../middleware/auth.js';
+import { runRateLimiter } from '../middleware/rateLimiter.js';
 
 export const roomRouter = Router();
 
@@ -20,3 +22,4 @@ roomRouter.get('/:shortId', getRoomByShortId);
 roomRouter.post('/:shortId/join', joinRoom);
 roomRouter.patch('/:shortId/members/:userId', updateMemberRole);
 roomRouter.delete('/:shortId', deleteRoom);
+roomRouter.post('/:shortId/run', runRateLimiter, runRoomCode);

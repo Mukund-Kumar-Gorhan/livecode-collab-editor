@@ -14,3 +14,22 @@ export const authRateLimiter = rateLimit({
   },
 });
 
+export const runRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10, // max 10 runs per user per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { keyGeneratorIpFallback: false },
+  keyGenerator: (req) => {
+    const user = (req as any).user;
+    return user?.id || req.ip || 'anonymous';
+  },
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      message: 'Execution rate limit exceeded: Maximum 10 runs per minute allowed.',
+      code: 'RATE_LIMIT_EXCEEDED',
+    });
+  },
+});
+
