@@ -1,6 +1,18 @@
 import React, { useState } from 'react';
-import { Play, Share2, Users, Circle, Code2, ArrowLeft, Check, Eye, PenLine, Loader2 } from 'lucide-react';
-import { Room, RoomRole, SupportedLanguage } from '../types';
+import {
+  Play,
+  Share2,
+  Users,
+  Circle,
+  Code2,
+  ArrowLeft,
+  Check,
+  Eye,
+  PenLine,
+  Loader2,
+  FolderTree,
+} from 'lucide-react';
+import { Room, RoomRole } from '../types';
 import { toast } from '../store/toastStore';
 import { getUserInitials } from '../utils/colors';
 import { ThemeSwitcher } from './ThemeSwitcher';
@@ -16,11 +28,14 @@ export interface ActiveUser {
 interface EditorHeaderProps {
   room?: Room | null;
   role?: RoomRole | null;
-  language: SupportedLanguage;
-  onLanguageChange: (lang: SupportedLanguage) => void;
+  activeFile?: string | null;
+  activeLanguageName?: string;
+  isExecutable?: boolean;
   onRunCode: () => void;
   isRunning?: boolean;
   onBackToDashboard?: () => void;
+  onToggleExplorer?: () => void;
+  isExplorerOpen?: boolean;
   connectionStatus?: 'connected' | 'connecting' | 'disconnected';
   activeUsers?: ActiveUser[];
   typingUsers?: string[];
@@ -29,11 +44,14 @@ interface EditorHeaderProps {
 export const EditorHeader: React.FC<EditorHeaderProps> = ({
   room,
   role,
-  language,
-  onLanguageChange,
+  activeFile,
+  activeLanguageName = 'Plain Text',
+  isExecutable = true,
   onRunCode,
   isRunning = false,
   onBackToDashboard,
+  onToggleExplorer,
+  isExplorerOpen = true,
   connectionStatus = 'connected',
   activeUsers = [],
   typingUsers = [],
@@ -61,6 +79,21 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
             title="Back to Dashboard"
           >
             <ArrowLeft className="w-4 h-4" />
+          </button>
+        )}
+
+        {/* Toggle Explorer Button */}
+        {onToggleExplorer && (
+          <button
+            onClick={onToggleExplorer}
+            className={`p-1.5 rounded-lg border border-app-border transition ${
+              isExplorerOpen
+                ? 'bg-app-accent/15 text-app-accent border-app-accent/30'
+                : 'text-app-text-muted hover:text-app-text hover:bg-app-surface-2'
+            }`}
+            title="Toggle File Explorer"
+          >
+            <FolderTree className="w-4 h-4" />
           </button>
         )}
 
@@ -141,29 +174,29 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
 
       {/* Center / Action Toolbar */}
       <div className="flex items-center space-x-2 sm:space-x-3">
-        {/* Language Selector Dropdown */}
-        <div className="flex items-center space-x-1.5">
-          <select
-            id="language-select"
-            value={language}
-            disabled={isViewer}
-            onChange={(e) => onLanguageChange(e.target.value as SupportedLanguage)}
-            title={isViewer ? 'Language changes disabled in View-Only mode' : 'Change workspace language'}
-            className="bg-app-surface-2 text-app-text text-xs rounded-lg border border-app-border px-2.5 py-1.5 focus:outline-none focus:border-app-accent focus:ring-1 focus:ring-app-accent font-mono transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            <option value="python">Python 3.11</option>
-            <option value="javascript">JavaScript (Node)</option>
-            <option value="java">Java 17</option>
-            <option value="cpp">C++ (g++ 13)</option>
-          </select>
+        {/* Active File Language Indicator Badge */}
+        <div
+          className="flex items-center space-x-1.5 bg-app-surface-2 border border-app-border px-2.5 py-1 rounded-lg text-xs font-mono"
+          title={`Active file: ${activeFile || 'None'}`}
+        >
+          <span className="text-[10px] text-app-text-muted font-semibold tracking-wider uppercase">LANG</span>
+          <span className="text-app-text font-medium text-[11px]">{activeLanguageName}</span>
         </div>
 
         {/* Prominent Run Button */}
         <button
           onClick={onRunCode}
-          disabled={isRunning || isViewer}
+          disabled={isRunning || isViewer || !activeFile || !isExecutable}
           className="flex items-center space-x-1.5 bg-app-success hover:opacity-90 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition shadow-sm font-heading"
-          title={isViewer ? 'Code execution disabled for Viewers' : 'Run code in Docker Sandbox'}
+          title={
+            isViewer
+              ? 'Code execution disabled for Viewers'
+              : !activeFile
+              ? 'Select an active file to run'
+              : !isExecutable
+              ? 'Execution not supported for this file type'
+              : `Run ${activeFile} in Docker Sandbox`
+          }
         >
           {isRunning ? (
             <Loader2 className="w-3.5 h-3.5 animate-spin" />

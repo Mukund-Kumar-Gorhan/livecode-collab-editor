@@ -3,12 +3,13 @@ import Editor, { OnMount } from '@monaco-editor/react';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import { MonacoBinding } from 'y-monaco';
-import { SupportedLanguage } from '../types';
 import { useThemeStore } from '../store/themeStore';
 import { registerMonacoThemes, getMonacoThemeName } from '../utils/monacoThemes';
+import { getLanguageInfo } from '../utils/language';
+import { Code2 } from 'lucide-react';
 
 interface CodeEditorProps {
-  language: SupportedLanguage;
+  activeFile: string | null;
   ydoc: Y.Doc | null;
   provider: WebsocketProvider | null;
   isViewer?: boolean;
@@ -16,23 +17,8 @@ interface CodeEditorProps {
   tabSize?: number;
 }
 
-const mapLanguageToMonaco = (lang: SupportedLanguage): string => {
-  switch (lang) {
-    case 'python':
-      return 'python';
-    case 'javascript':
-      return 'javascript';
-    case 'java':
-      return 'java';
-    case 'cpp':
-      return 'cpp';
-    default:
-      return 'plaintext';
-  }
-};
-
 export const CodeEditor: React.FC<CodeEditorProps> = ({
-  language,
+  activeFile,
   ydoc,
   provider,
   isViewer = false,
@@ -42,7 +28,11 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   const { theme } = useThemeStore();
   const [editor, setEditor] = useState<any>(null);
   const monacoRef = useRef<any>(null);
+  const bindingRef = useRef<MonacoBinding | null>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const langInfo = activeFile ? getLanguageInfo(activeFile) : null;
+  const currentMonacoLang = langInfo ? langInfo.monacoLanguage : 'plaintext';
 
   const handleEditorDidMount: OnMount = (ed, monaco) => {
     setEditor(ed);
@@ -59,34 +49,79 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     }
   }, [theme]);
 
-  // Update dynamic editor options (font size, tab size)
+  // Update dynamic editor options (font size, tab size, readOnly)
   useEffect(() => {
     if (editor) {
       editor.updateOptions({
         fontSize,
         tabSize,
+        readOnly: isViewer,
+        domReadOnly: isViewer,
       });
     }
-  }, [editor, fontSize, tabSize]);
+  }, [editor, fontSize, tabSize, isViewer]);
 
-  // 1) Binding: editor + ydoc + provider teeno ready hone par hi banegi
+  // Update local awareness activeFile
   useEffect(() => {
-    if (!editor || !ydoc || !provider) return;
-    const model = editor.getModel();
-    if (!model) return;
+    if (provider && provider.awareness) {
+      provider.awareness.setLocalStateField('activeFile', activeFile);
+    }
+  }, [provider, activeFile]);
 
-    const ytext = ydoc.getText('monaco');
+  // 1) Bind active Y.Text to Monaco Editor Model
+  useEffect(() => {
+    if (!editor || !ydoc || !provider || !monacoRef.current || !activeFile) {
+      if (bindingRef.current) {
+        bindingRef.current.destroy();
+        bindingRef.current = null;
+      }
+      return;
+    }
+
+    const filesMap = ydoc.getMap('files');
+    let ytext = filesMap.get(activeFile) as Y.Text | undefined;
+
+    // Fallback if filesMap doesn't have it yet, check monaco text
+    if (!ytext) {
+      ytext = ydoc.getText('monaco');
+    }
+
+    const monaco = monacoRef.current;
+    const uri = monaco.Uri.parse(`inmemory:///${activeFile}`);
+    let model = monaco.editor.getModel(uri);
+
+    if (!model) {
+      model = monaco.editor.createModel('', currentMonacoLang, uri);
+    } else {
+      monaco.editor.setModelLanguage(model, currentMonacoLang);
+    }
+
+    // Clean up previous binding before binding new file model
+    if (bindingRef.current) {
+      bindingRef.current.destroy();
+      bindingRef.current = null;
+    }
+
+    editor.setModel(model);
+
+    // Create fresh MonacoBinding for the active file
     const binding = new MonacoBinding(
       ytext,
       model,
       new Set([editor]),
       provider.awareness
     );
+    bindingRef.current = binding;
 
-    return () => binding.destroy();
-  }, [editor, ydoc, provider]);
+    return () => {
+      if (bindingRef.current) {
+        bindingRef.current.destroy();
+        bindingRef.current = null;
+      }
+    };
+  }, [editor, ydoc, provider, activeFile, currentMonacoLang]);
 
-  // 2) Remote cursor styles (naam + color)
+  // 2) Remote cursor styles (filtered by activeFile)
   useEffect(() => {
     if (!provider) return;
 
@@ -94,7 +129,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
       const states = provider.awareness.getStates();
       let css = '';
       states.forEach((state: any, clientID: number) => {
-        if (state.user?.color) {
+        // Sirf usi client ka cursor dikhao jo CURRENT activeFile dekh raha hai
+        if (state.user?.color && state.activeFile === activeFile) {
           const color = state.user.color;
           const name = (state.user.name || 'Anonymous').replace(/['"\\]/g, '');
           css += `
@@ -144,9 +180,9 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     return () => {
       provider.awareness.off('change', updateCursorStyles);
     };
-  }, [provider]);
+  }, [provider, activeFile]);
 
-  // 3) Typing indicator: sirf LOCAL keyboard se (remote edits se nahi)
+  // 3) Typing indicator: local keyboard typing tracking
   useEffect(() => {
     if (!editor || !provider || isViewer) return;
 
@@ -164,19 +200,33 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     };
   }, [editor, provider, isViewer]);
 
-  // Unmount par style tag hatao
+  // Clean up style tag on unmount
   useEffect(() => {
     return () => {
       document.getElementById('yjs-cursor-styles')?.remove();
     };
   }, []);
 
+  if (!activeFile) {
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center bg-app-bg text-app-text-muted select-none">
+        <div className="w-12 h-12 rounded-xl bg-app-surface-2 border border-app-border flex items-center justify-center text-app-accent mb-3">
+          <Code2 className="w-6 h-6" />
+        </div>
+        <p className="text-xs font-mono font-medium">No file open</p>
+        <p className="text-[11px] text-app-text-muted/70 mt-1">
+          Select a file from the explorer on the left or create a new file
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full h-full flex flex-col bg-app-bg relative">
       <Editor
         height="100%"
         theme={getMonacoThemeName(theme)}
-        language={mapLanguageToMonaco(language)}
+        language={currentMonacoLang}
         onMount={handleEditorDidMount}
         options={{
           minimap: { enabled: true },

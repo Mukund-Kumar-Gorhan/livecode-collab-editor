@@ -131,6 +131,58 @@ export const saveSnapshot = async (doc: WSSharedDoc): Promise<void> => {
   }
 };
 
+export const getDefaultFileName = (language: string): string => {
+  switch (language?.toLowerCase()) {
+    case 'python':
+      return 'main.py';
+    case 'javascript':
+      return 'index.js';
+    case 'java':
+      return 'Main.java';
+    case 'cpp':
+      return 'main.cpp';
+    default:
+      return 'main.py';
+  }
+};
+
+/**
+ * Ensures a document has the multi-file structure.
+ * Migrates legacy single-file rooms if files map is empty.
+ */
+export const ensureMultiFileStructure = (
+  doc: WSSharedDoc,
+  initialLanguage: string = 'python'
+): void => {
+  const filesMap = doc.getMap('files');
+  if (filesMap.size === 0) {
+    const oldText = doc.getText('monaco');
+    const lang = (doc.getMap('metadata').get('language') as string) || initialLanguage || 'python';
+    const defaultFileName = getDefaultFileName(lang);
+
+    if (oldText.length > 0) {
+      // Migrate legacy single-file room
+      const fileText = new Y.Text();
+      fileText.insert(0, oldText.toString());
+      filesMap.set(defaultFileName, fileText);
+      logger.info(`Migrated legacy monaco single-file content to files["${defaultFileName}"] for room ${doc.name}`);
+    } else {
+      // Fresh room: create starter file
+      const starterText = STARTER_CODE[lang] || STARTER_CODE.python;
+      const fileText = new Y.Text();
+      fileText.insert(0, starterText);
+      filesMap.set(defaultFileName, fileText);
+      oldText.insert(0, starterText); // legacy fallback
+      logger.info(`Initialized fresh multi-file Y.Doc with ${defaultFileName} (${lang}) for room ${doc.name}`);
+    }
+
+    const ymeta = doc.getMap('metadata');
+    if (!ymeta.get('language')) {
+      ymeta.set('language', lang);
+    }
+  }
+};
+
 /**
  * Retrieves existing or initializes a new WSSharedDoc for a room.
  * Ensures default starter code is inserted exactly once when room is first loaded.
@@ -169,20 +221,10 @@ export const getOrCreateDoc = async (
             ytext.insert(0, latestSnapshot.content);
           }
         }
-      } else {
-        // Fresh room: insert starter code only once
-        const initialLanguage = room.language || 'python';
-        const starterText = STARTER_CODE[initialLanguage] || STARTER_CODE.python;
-        const ytext = doc.getText('monaco');
-        if (ytext.length === 0) {
-          ytext.insert(0, starterText);
-        }
-        const ymeta = doc.getMap('metadata');
-        if (!ymeta.get('language')) {
-          ymeta.set('language', initialLanguage);
-        }
-        logger.info(`Initialized fresh Y.Doc with ${initialLanguage} starter template for room ${shortId}`);
       }
+
+      // Ensure multi-file workspace files map is populated and migrated if needed
+      ensureMultiFileStructure(doc, room.language || 'python');
       doc.initialized = true;
     } catch (err) {
       logger.error(`Error initializing Y.Doc for room ${shortId}:`, err);

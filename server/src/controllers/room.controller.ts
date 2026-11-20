@@ -308,9 +308,32 @@ export const deleteRoom = async (req: Request, res: Response, next: NextFunction
   }
 };
 
+export const detectLanguageFromFilename = (filename: string): 'python' | 'javascript' | 'java' | 'cpp' | null => {
+  const ext = filename.split('.').pop()?.toLowerCase();
+  switch (ext) {
+    case 'py':
+      return 'python';
+    case 'js':
+    case 'mjs':
+    case 'cjs':
+      return 'javascript';
+    case 'java':
+      return 'java';
+    case 'cpp':
+    case 'cc':
+    case 'cxx':
+    case 'c':
+    case 'h':
+    case 'hpp':
+      return 'cpp';
+    default:
+      return null;
+  }
+};
+
 /**
  * POST /api/rooms/:shortId/run
- * JWT protected. Executes the room's current code from Y.Doc in the Docker sandbox runner.
+ * JWT protected. Executes the room's current active file code from Y.Doc in the Docker sandbox runner.
  * Allowed roles: OWNER, EDITOR. Role VIEWER returns 403 Forbidden.
  */
 export const runRoomCode = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -320,6 +343,7 @@ export const runRoomCode = async (req: Request, res: Response, next: NextFunctio
     }
 
     const { shortId } = req.params;
+    const { activeFile } = req.body || {};
 
     const room = await prisma.room.findUnique({
       where: { shortId },
@@ -351,11 +375,54 @@ export const runRoomCode = async (req: Request, res: Response, next: NextFunctio
       throw new ApiError('Viewers are not permitted to run code', 403, 'FORBIDDEN');
     }
 
-    // Read current code and language directly from server Y.Doc
+    // Read active file code and language from server Y.Doc
     const doc = await getOrCreateDoc(shortId, room);
-    const code = doc.getText('monaco').toString();
-    const metadata = doc.getMap('metadata');
-    const language = (metadata.get('language') as string) || room.language || 'python';
+    const filesMap = doc.getMap('files');
+
+    let code = '';
+    let language: string = (doc.getMap('metadata').get('language') as string) || room.language || 'python';
+
+    if (activeFile && typeof activeFile === 'string') {
+      const fileYText = filesMap.get(activeFile) as any;
+      if (fileYText && typeof fileYText.toString === 'function') {
+        code = fileYText.toString();
+        const detected = detectLanguageFromFilename(activeFile);
+        if (!detected) {
+          throw new ApiError(
+            `File "${activeFile}" cannot be executed. Supported execution languages: Python, JavaScript, Java, C++`,
+            400,
+            'UNSUPPORTED_LANGUAGE'
+          );
+        }
+        language = detected;
+      } else {
+        throw new ApiError(`Active file "${activeFile}" not found in workspace`, 404, 'FILE_NOT_FOUND');
+      }
+    } else {
+      // Fallback: pick primary file from filesMap or fallback to monaco text
+      if (filesMap.size > 0) {
+        const keys = Array.from(filesMap.keys());
+        const defaultKey = keys.find((k) =>
+          ['main.py', 'index.js', 'Main.java', 'main.cpp'].includes(k)
+        ) || keys[0];
+        const fileYText = filesMap.get(defaultKey) as any;
+        if (fileYText && typeof fileYText.toString === 'function') {
+          code = fileYText.toString();
+          const detected = detectLanguageFromFilename(defaultKey);
+          if (detected) language = detected;
+        }
+      } else {
+        code = doc.getText('monaco').toString();
+      }
+    }
+
+    if (!['python', 'javascript', 'java', 'cpp'].includes(language)) {
+      throw new ApiError(
+        `Language for file "${activeFile || 'file'}" is not supported for execution. Supported languages: Python, JavaScript, Java, C++`,
+        400,
+        'UNSUPPORTED_LANGUAGE'
+      );
+    }
 
     // Dispatch execution to Runner service
     let runnerResult: {
