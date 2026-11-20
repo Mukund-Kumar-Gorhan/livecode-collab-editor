@@ -8,34 +8,45 @@ import {
   Code2,
   Plus,
   LogIn,
-  LogOut,
-  User,
+  Search,
   Users,
   Copy,
   Trash2,
   ExternalLink,
   Code,
   Sparkles,
-  Loader2,
-  X,
+  Filter,
 } from 'lucide-react';
+import { UserNavDropdown } from '../components/UserNavDropdown';
+import { ThemeSwitcher } from '../components/ThemeSwitcher';
+import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
+import { Card, CardHeader, CardTitle, CardDescription } from '../components/ui/Card';
+import { Modal } from '../components/ui/Modal';
+import { Skeleton } from '../components/ui/Skeleton';
+import { EmptyState } from '../components/ui/EmptyState';
+import { getUserInitials, getUserColor } from '../utils/colors';
 
 const LANGUAGE_BADGES: Record<
   SupportedLanguage,
-  { label: string; bg: string; text: string; border: string }
+  { label: string; badgeClass: string }
 > = {
-  python: { label: 'Python 3.11', bg: 'bg-emerald-950/60', text: 'text-emerald-300', border: 'border-emerald-600/40' },
-  javascript: { label: 'JavaScript', bg: 'bg-yellow-950/60', text: 'text-yellow-300', border: 'border-yellow-600/40' },
-  java: { label: 'Java 17', bg: 'bg-amber-950/60', text: 'text-amber-300', border: 'border-amber-600/40' },
-  cpp: { label: 'C++ 13', bg: 'bg-sky-950/60', text: 'text-sky-300', border: 'border-sky-600/40' },
+  python: { label: 'Python 3.11', badgeClass: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' },
+  javascript: { label: 'JavaScript', badgeClass: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30' },
+  java: { label: 'Java 17', badgeClass: 'bg-amber-500/15 text-amber-400 border-amber-500/30' },
+  cpp: { label: 'C++ 13', badgeClass: 'bg-sky-500/15 text-sky-400 border-sky-500/30' },
 };
 
 export const DashboardPage: React.FC = () => {
-  const { user, logout } = useAuthStore();
+  const { user } = useAuthStore();
   const navigate = useNavigate();
 
   const [rooms, setRooms] = useState<Room[]>([]);
   const [isLoadingRooms, setIsLoadingRooms] = useState(true);
+
+  // Search & Filter state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedLangFilter, setSelectedLangFilter] = useState<'all' | SupportedLanguage>('all');
 
   // Create room modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -47,6 +58,13 @@ export const DashboardPage: React.FC = () => {
   // Join room input state
   const [joinCode, setJoinCode] = useState('');
   const [isJoining, setIsJoining] = useState(false);
+
+  // Initialize modal language from user's preferred defaultLanguage
+  useEffect(() => {
+    if (user?.defaultLanguage) {
+      setNewRoomLang(user.defaultLanguage);
+    }
+  }, [user?.defaultLanguage, isModalOpen]);
 
   const fetchRooms = async () => {
     setIsLoadingRooms(true);
@@ -127,156 +145,252 @@ export const DashboardPage: React.FC = () => {
 
   const copyRoomCode = (shortId: string) => {
     navigator.clipboard.writeText(shortId);
-    toast.success(`Room code ${shortId} copied to clipboard!`);
+    toast.success(`Room code "${shortId}" copied to clipboard!`);
   };
 
-  const handleLogout = async () => {
-    await logout();
-    toast.info('Logged out successfully');
-    navigate('/login');
-  };
+  // Filtered rooms
+  const filteredRooms = rooms.filter((r) => {
+    const matchesSearch =
+      r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      r.shortId.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (r.description && r.description.toLowerCase().includes(searchQuery.toLowerCase()));
+
+    const matchesLang = selectedLangFilter === 'all' || r.language === selectedLangFilter;
+    return matchesSearch && matchesLang;
+  });
+
+  const displayName = user?.name || user?.email?.split('@')[0] || 'Engineer';
 
   return (
-    <div className="min-h-screen w-screen bg-[#181818] text-[#cccccc] flex flex-col selection:bg-sky-900">
+    <div className="min-h-screen bg-app-bg text-app-text flex flex-col selection:bg-app-accent/30">
       {/* Top Navbar */}
-      <header className="h-14 bg-[#252526] border-b border-[#3c3c3c] px-6 flex items-center justify-between select-none">
+      <header className="h-14 bg-app-surface border-b border-app-border px-4 sm:px-8 flex items-center justify-between sticky top-0 z-30 backdrop-blur-md">
         <div className="flex items-center space-x-3">
-          <div className="flex items-center space-x-2 text-sky-400 font-bold tracking-wide">
+          <div className="flex items-center space-x-2 text-app-accent font-bold tracking-wide">
             <Code2 className="w-5 h-5" />
-            <span className="text-base text-gray-100">LiveCode</span>
+            <span className="text-base text-app-text font-heading">LiveCode</span>
           </div>
-          <span className="text-gray-500 text-xs">/</span>
-          <span className="text-xs text-gray-400 font-medium">Dashboard</span>
+          <span className="text-app-border text-xs hidden sm:inline">/</span>
+          <span className="text-xs text-app-text-muted font-medium hidden sm:inline">Dashboard</span>
         </div>
 
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2 bg-[#1e1e1e] border border-[#3c3c3c] rounded-full px-3 py-1">
-            <div className="w-5 h-5 rounded-full bg-sky-500/20 text-sky-400 flex items-center justify-center text-[10px] font-bold">
-              <User className="w-3 h-3" />
-            </div>
-            <span className="text-xs text-gray-200 font-medium">{user?.name || user?.email}</span>
-          </div>
-
-          <button
-            onClick={handleLogout}
-            className="flex items-center space-x-1.5 text-xs text-gray-400 hover:text-red-400 transition px-2 py-1 rounded hover:bg-[#323233]"
-            title="Sign out"
-          >
-            <LogOut className="w-4 h-4" />
-            <span className="hidden sm:inline">Logout</span>
-          </button>
+        <div className="flex items-center space-x-3">
+          <ThemeSwitcher compact />
+          <UserNavDropdown />
         </div>
       </header>
 
       {/* Main Container */}
-      <main className="flex-1 max-w-6xl w-full mx-auto p-6 flex flex-col space-y-6">
-        {/* Action Header Card */}
-        <div className="bg-[#252526] border border-[#3c3c3c] rounded-xl p-6 shadow-xl flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <h1 className="text-lg font-bold text-gray-100 flex items-center space-x-2">
-              <span>Your Collaborative Workspaces</span>
-              <Sparkles className="w-4 h-4 text-sky-400" />
-            </h1>
-            <p className="text-xs text-gray-400 mt-1">
-              Create a new room or join an existing session with team members in real time.
-            </p>
-          </div>
+      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-8 py-8 flex flex-col space-y-8">
+        {/* Welcome & Quick Action Banner */}
+        <div className="bg-app-surface border border-app-border rounded-2xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
+          {/* Subtle accent highlight bar */}
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-app-accent via-indigo-500 to-emerald-500" />
 
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Join with code inline form */}
-            <form onSubmit={handleJoinWithCode} className="flex items-center space-x-2">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div>
+              <div className="flex items-center space-x-2 text-xs font-semibold text-app-accent uppercase tracking-wider mb-1">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Real-Time Code Collaboration</span>
+              </div>
+              <h1 className="text-xl sm:text-2xl font-extrabold text-app-text font-heading">
+                Welcome back, {displayName}
+              </h1>
+              <p className="text-xs sm:text-sm text-app-text-muted mt-1 max-w-xl leading-relaxed">
+                Start a live coding session with your team, edit in real time with synchronized Monaco cursors, and run code securely in Docker containers.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                variant="primary"
+                size="md"
+                leftIcon={<Plus className="w-4 h-4" />}
+                onClick={() => setIsModalOpen(true)}
+              >
+                Create Room
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Action Row: Join with code card + Search & Filter bar */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          {/* Join with code card */}
+          <Card className="lg:col-span-1">
+            <CardHeader className="mb-3">
+              <CardTitle className="text-sm flex items-center space-x-2">
+                <LogIn className="w-4 h-4 text-app-accent" />
+                <span>Join with Room Code</span>
+              </CardTitle>
+              <CardDescription>
+                Got a 6-character room code from a teammate? Paste it here.
+              </CardDescription>
+            </CardHeader>
+            <form onSubmit={handleJoinWithCode} className="flex gap-2">
               <input
                 type="text"
                 value={joinCode}
                 onChange={(e) => setJoinCode(e.target.value)}
-                placeholder="Enter code to join..."
-                className="bg-[#1e1e1e] border border-[#3c3c3c] rounded-lg px-3 py-1.5 text-xs text-gray-200 placeholder-gray-400 font-mono focus:outline-none focus:border-sky-500 w-36 sm:w-44"
+                placeholder="e.g. ab12cd"
+                className="w-full bg-app-surface-2 border border-app-border rounded-lg px-3 py-2 text-xs text-app-text placeholder:text-app-text-muted/60 font-mono focus:outline-none focus:border-app-accent focus:ring-1 focus:ring-app-accent uppercase tracking-wider"
               />
-              <button
+              <Button
                 type="submit"
-                disabled={!joinCode.trim() || isJoining}
-                className="bg-[#323233] hover:bg-[#3c3c3c] border border-[#3c3c3c] text-gray-200 hover:text-white px-3 py-1.5 rounded-lg text-xs font-medium flex items-center space-x-1.5 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                title="Join room with code"
+                variant="secondary"
+                size="md"
+                isLoading={isJoining}
+                disabled={!joinCode.trim()}
               >
-                {isJoining ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <LogIn className="w-3.5 h-3.5 text-sky-400" />
-                )}
-                <span>Join</span>
-              </button>
+                Join
+              </Button>
             </form>
+          </Card>
 
-            {/* Create Room Button */}
-            <button
-              onClick={() => setIsModalOpen(true)}
-              className="bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white px-4 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1.5 transition shadow-sm"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Create Room</span>
-            </button>
-          </div>
+          {/* Search & Language Filters Card */}
+          <Card className="lg:col-span-2 flex flex-col justify-between">
+            <CardHeader className="mb-3">
+              <CardTitle className="text-sm flex items-center space-x-2">
+                <Filter className="w-4 h-4 text-app-accent" />
+                <span>Search & Filter</span>
+              </CardTitle>
+              <CardDescription>
+                Quickly locate rooms by name, short ID, or programming language.
+              </CardDescription>
+            </CardHeader>
+
+            <div className="space-y-3">
+              {/* Search bar */}
+              <div className="relative">
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-app-text-muted pointer-events-none">
+                  <Search className="w-4 h-4" />
+                </div>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search rooms by name, code or description..."
+                  className="w-full bg-app-surface-2 border border-app-border rounded-lg pl-9 pr-3 py-2 text-xs text-app-text placeholder:text-app-text-muted/60 focus:outline-none focus:border-app-accent focus:ring-1 focus:ring-app-accent transition-all"
+                />
+              </div>
+
+              {/* Language filter pills */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {(['all', 'python', 'javascript', 'java', 'cpp'] as const).map((filterId) => (
+                  <button
+                    key={filterId}
+                    type="button"
+                    onClick={() => setSelectedLangFilter(filterId)}
+                    className={`text-[11px] font-medium px-2.5 py-1 rounded-lg border transition-all ${
+                      selectedLangFilter === filterId
+                        ? 'bg-app-accent text-app-accent-contrast border-app-accent font-semibold shadow-sm'
+                        : 'bg-app-surface-2 text-app-text-muted border-app-border hover:text-app-text'
+                    }`}
+                  >
+                    {filterId === 'all'
+                      ? 'All Languages'
+                      : filterId === 'cpp'
+                      ? 'C++'
+                      : filterId.charAt(0).toUpperCase() + filterId.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </Card>
         </div>
 
-        {/* Rooms Grid / Section */}
-        <div className="flex-1 flex flex-col">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400">
-              Rooms ({rooms.length})
+        {/* Rooms Grid Section */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-app-text-muted flex items-center space-x-2">
+              <span>Your Workspaces</span>
+              <span className="text-[10px] font-mono bg-app-surface-2 px-2 py-0.5 rounded-full border border-app-border text-app-text">
+                {filteredRooms.length} of {rooms.length}
+              </span>
             </h2>
           </div>
 
           {isLoadingRooms ? (
-            <div className="flex-1 flex flex-col items-center justify-center py-20 text-gray-500">
-              <Loader2 className="w-8 h-8 text-sky-400 animate-spin mb-3" />
-              <p className="text-xs font-mono">Loading rooms...</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="bg-app-surface border border-app-border rounded-xl p-5 space-y-4">
+                  <div className="flex justify-between items-center">
+                    <Skeleton width="80px" height="20px" />
+                    <Skeleton width="60px" height="20px" />
+                  </div>
+                  <Skeleton width="180px" height="24px" />
+                  <Skeleton width="100%" height="36px" />
+                  <div className="pt-3 border-t border-app-border flex justify-between">
+                    <Skeleton width="70px" height="20px" />
+                    <Skeleton width="60px" height="28px" />
+                  </div>
+                </div>
+              ))}
             </div>
           ) : rooms.length === 0 ? (
-            /* Empty State */
-            <div className="flex-1 flex flex-col items-center justify-center py-20 bg-[#252526]/50 border border-dashed border-[#3c3c3c] rounded-xl text-center p-8">
-              <div className="w-12 h-12 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 mb-3">
-                <Code className="w-6 h-6" />
-              </div>
-              <h3 className="text-sm font-semibold text-gray-200">No rooms found</h3>
-              <p className="text-xs text-gray-400 max-w-sm mt-1 mb-5">
-                You haven't created or joined any collaborative sessions yet. Create a room or join with a code to get started.
-              </p>
-              <button
-                onClick={() => setIsModalOpen(true)}
-                className="bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium px-4 py-2 rounded-lg flex items-center space-x-1.5 transition"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Create your first room</span>
-              </button>
-            </div>
+            /* Zero Rooms Empty State */
+            <EmptyState
+              icon={<Code className="w-6 h-6 text-app-accent" />}
+              title="No collaborative workspaces yet"
+              description="Create your first collaborative session or join an existing room with a code to start hacking."
+              action={
+                <Button
+                  variant="primary"
+                  size="md"
+                  leftIcon={<Plus className="w-4 h-4" />}
+                  onClick={() => setIsModalOpen(true)}
+                >
+                  Create your first room
+                </Button>
+              }
+            />
+          ) : filteredRooms.length === 0 ? (
+            /* Search yielded no matches */
+            <EmptyState
+              icon={<Search className="w-6 h-6 text-app-text-muted" />}
+              title="No matching rooms found"
+              description={`No rooms matched "${searchQuery}". Try a different keyword or clear language filters.`}
+              action={
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setSelectedLangFilter('all');
+                  }}
+                >
+                  Clear Filters
+                </Button>
+              }
+            />
           ) : (
-            /* Room Cards Grid */
+            /* Rooms Grid */
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {rooms.map((room) => {
+              {filteredRooms.map((room) => {
                 const langConfig = LANGUAGE_BADGES[room.language] || LANGUAGE_BADGES.python;
                 const isOwner = room.role === 'OWNER' || room.ownerId === user?.id;
 
                 return (
                   <div
                     key={room.id}
-                    className="bg-[#252526] border border-[#3c3c3c] hover:border-gray-600 rounded-xl p-5 shadow-lg flex flex-col justify-between transition group"
+                    className="bg-app-surface border border-app-border hover:border-app-accent/60 rounded-xl p-5 shadow-md hover:shadow-xl transition-all duration-200 flex flex-col justify-between group"
                   >
                     <div>
                       {/* Top Badges */}
                       <div className="flex items-center justify-between mb-3">
                         <span
-                          className={`text-[11px] font-mono px-2 py-0.5 rounded border ${langConfig.bg} ${langConfig.text} ${langConfig.border}`}
+                          className={`text-[10px] font-mono px-2 py-0.5 rounded-md border font-semibold ${langConfig.badgeClass}`}
                         >
                           {langConfig.label}
                         </span>
 
                         <span
-                          className={`text-[10px] font-semibold tracking-wider uppercase px-2 py-0.5 rounded ${
+                          className={`text-[9px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-md border ${
                             isOwner
-                              ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-500/30'
+                              ? 'bg-app-success/15 text-app-success border-app-success/30'
                               : room.role === 'EDITOR'
-                              ? 'bg-sky-950/80 text-sky-400 border border-sky-500/30'
-                              : 'bg-amber-950/80 text-amber-400 border border-amber-500/30'
+                              ? 'bg-app-accent/15 text-app-accent border-app-accent/30'
+                              : 'bg-app-warning/15 text-app-warning border-app-warning/30'
                           }`}
                         >
                           {room.role || (isOwner ? 'OWNER' : 'MEMBER')}
@@ -286,62 +400,90 @@ export const DashboardPage: React.FC = () => {
                       {/* Room Title */}
                       <h3
                         onClick={() => navigate(`/room/${room.shortId}`)}
-                        className="text-sm font-bold text-gray-100 group-hover:text-sky-300 transition line-clamp-1 cursor-pointer"
+                        className="text-sm font-bold text-app-text group-hover:text-app-accent transition-colors line-clamp-1 cursor-pointer font-heading"
                         title="Open room editor"
                       >
                         {room.name}
                       </h3>
 
-                      {room.description && (
-                        <p className="text-xs text-gray-400 mt-1 line-clamp-2 leading-relaxed">
+                      {room.description ? (
+                        <p className="text-xs text-app-text-muted mt-1.5 line-clamp-2 leading-relaxed">
                           {room.description}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-app-text-muted/60 mt-1.5 italic">
+                          No description provided
                         </p>
                       )}
 
                       {/* Code Badge */}
-                      <div className="flex items-center space-x-2 mt-4 text-xs font-mono text-gray-400">
-                        <span className="text-[11px] text-gray-500">Code:</span>
-                        <span className="bg-[#1e1e1e] px-2 py-0.5 rounded border border-[#3c3c3c] text-sky-400 select-all">
+                      <div className="flex items-center space-x-2 mt-4 text-xs font-mono">
+                        <span className="text-[11px] text-app-text-muted">Code:</span>
+                        <span className="bg-app-surface-2 px-2 py-0.5 rounded border border-app-border text-app-accent font-semibold select-all">
                           {room.shortId}
                         </span>
                         <button
                           onClick={() => copyRoomCode(room.shortId)}
-                          className="hover:text-white transition p-1"
-                          title="Copy code"
+                          className="text-app-text-muted hover:text-app-text transition p-1 rounded hover:bg-app-surface-2"
+                          title="Copy room code"
                         >
                           <Copy className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
 
-                    {/* Card Footer */}
-                    <div className="mt-5 pt-4 border-t border-[#3c3c3c] flex items-center justify-between">
-                      <div className="flex items-center space-x-1.5 text-xs text-gray-400">
-                        <Users className="w-3.5 h-3.5" />
-                        <span className="text-[11px]">
-                          {room._count?.members || room.members?.length || 1} member
-                          {(room._count?.members || room.members?.length || 1) !== 1 ? 's' : ''}
+                    {/* Card Footer: Members Stack + Open / Delete */}
+                    <div className="mt-5 pt-3.5 border-t border-app-border flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        {/* Member avatar stack or count */}
+                        {room.members && room.members.length > 0 ? (
+                          <div className="flex items-center -space-x-1.5">
+                            {room.members.slice(0, 3).map((m) => {
+                              const mColor = m.user?.avatarColor || getUserColor(m.userId);
+                              return (
+                                <div
+                                  key={m.id}
+                                  className="w-5 h-5 rounded-full border border-app-surface flex items-center justify-center text-[9px] font-bold text-white overflow-hidden shadow-xs"
+                                  style={{ backgroundColor: mColor }}
+                                  title={m.user?.name || m.user?.email || 'Member'}
+                                >
+                                  {m.user?.avatarUrl ? (
+                                    <img src={m.user.avatarUrl} alt="" className="w-full h-full object-cover" />
+                                  ) : (
+                                    getUserInitials(m.user?.name, m.user?.email)
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                        <span className="text-[11px] text-app-text-muted flex items-center space-x-1">
+                          <Users className="w-3.5 h-3.5" />
+                          <span>
+                            {room._count?.members || room.members?.length || 1}
+                          </span>
                         </span>
                       </div>
 
-                      <div className="flex items-center space-x-2">
+                      <div className="flex items-center space-x-1.5">
                         {isOwner && (
                           <button
                             onClick={() => handleDeleteRoom(room.shortId, room.name)}
-                            className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-950/30 rounded transition"
+                            className="p-1.5 text-app-text-muted hover:text-app-danger hover:bg-app-danger/10 rounded-lg transition"
                             title="Delete room"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         )}
 
-                        <button
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          rightIcon={<ExternalLink className="w-3.5 h-3.5" />}
                           onClick={() => navigate(`/room/${room.shortId}`)}
-                          className="bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition shadow-sm"
                         >
-                          <span>Open</span>
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </button>
+                          Open
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -353,95 +495,71 @@ export const DashboardPage: React.FC = () => {
       </main>
 
       {/* Create Room Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#252526] border border-[#3c3c3c] rounded-xl shadow-2xl w-full max-w-md p-6 relative">
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-sm font-bold text-gray-100 flex items-center space-x-2">
-                <Code2 className="w-4 h-4 text-sky-400" />
-                <span>Create New Room</span>
-              </h3>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="text-gray-400 hover:text-white transition"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title="Create New Collaborative Room"
+        description="Set up a real-time room to code, sync, and execute with teammates."
+      >
+        <form onSubmit={handleCreateRoom} className="space-y-4">
+          <Input
+            label="Room Name"
+            required
+            value={newRoomName}
+            onChange={(e) => setNewRoomName(e.target.value)}
+            placeholder="e.g. Distributed Algorithms Session"
+          />
 
-            <form onSubmit={handleCreateRoom} className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-300 mb-1.5">Room Name</label>
-                <input
-                  type="text"
-                  required
-                  value={newRoomName}
-                  onChange={(e) => setNewRoomName(e.target.value)}
-                  placeholder="e.g. Distributed Algorithms Session"
-                  className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded-lg px-3 py-2 text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-sky-500 font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-300 mb-1.5">
-                  Primary Language
-                </label>
-                <select
-                  value={newRoomLang}
-                  onChange={(e) => setNewRoomLang(e.target.value as SupportedLanguage)}
-                  className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded-lg px-3 py-2 text-xs text-gray-200 focus:outline-none focus:border-sky-500 font-mono"
-                >
-                  <option value="python">Python 3.11</option>
-                  <option value="javascript">JavaScript (Node.js)</option>
-                  <option value="java">Java 17</option>
-                  <option value="cpp">C++ (g++ 13)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-300 mb-1.5">
-                  Description <span className="text-gray-500">(optional)</span>
-                </label>
-                <textarea
-                  rows={2}
-                  value={newRoomDesc}
-                  onChange={(e) => setNewRoomDesc(e.target.value)}
-                  placeholder="Notes or agenda for this collaborative workspace..."
-                  className="w-full bg-[#1e1e1e] border border-[#3c3c3c] rounded-lg px-3 py-2 text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-sky-500 resize-none"
-                />
-              </div>
-
-              <div className="pt-2 flex items-center justify-end space-x-2">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-3 py-1.5 text-xs font-medium text-gray-400 hover:text-white transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isCreating}
-                  className="bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white text-xs font-semibold px-4 py-2 rounded-lg flex items-center space-x-1.5 transition shadow"
-                >
-                  {isCreating ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Creating...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Create Room</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
+          <div>
+            <label className="block text-xs font-medium text-app-text-muted mb-1.5 select-none">
+              Primary Language
+            </label>
+            <select
+              value={newRoomLang}
+              onChange={(e) => setNewRoomLang(e.target.value as SupportedLanguage)}
+              className="w-full bg-app-surface border border-app-border rounded-lg px-3 py-2 text-xs text-app-text focus:outline-none focus:border-app-accent focus:ring-1 focus:ring-app-accent font-mono transition-colors"
+            >
+              <option value="python">Python 3.11</option>
+              <option value="javascript">JavaScript (Node.js 20)</option>
+              <option value="java">Java 17</option>
+              <option value="cpp">C++ (g++ 13)</option>
+            </select>
           </div>
-        </div>
-      )}
+
+          <div>
+            <label className="block text-xs font-medium text-app-text-muted mb-1.5 select-none">
+              Description <span className="text-app-text-muted/60">(optional)</span>
+            </label>
+            <textarea
+              rows={2}
+              value={newRoomDesc}
+              onChange={(e) => setNewRoomDesc(e.target.value)}
+              placeholder="Notes or agenda for this collaborative workspace..."
+              className="w-full bg-app-surface border border-app-border rounded-lg px-3 py-2 text-xs text-app-text placeholder:text-app-text-muted/60 focus:outline-none focus:border-app-accent focus:ring-1 focus:ring-app-accent resize-none transition-colors"
+            />
+          </div>
+
+          <div className="pt-2 flex items-center justify-end space-x-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              isLoading={isCreating}
+              leftIcon={<Plus className="w-3.5 h-3.5" />}
+            >
+              Create Room
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 };
-

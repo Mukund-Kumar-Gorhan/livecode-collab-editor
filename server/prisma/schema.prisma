@@ -34,14 +34,20 @@ enum ExecutionStatus {
 // ------------------------------------------------------------------------------
 
 model User {
-  id            String         @id @default(uuid())
-  email         String         @unique
-  passwordHash  String
-  name          String?
-  avatarUrl     String?
-  refreshToken  String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id              String         @id @default(uuid())
+  email           String         @unique
+  passwordHash    String
+  name            String?
+  bio             String?        @db.VarChar(160)
+  avatarColor     String?
+  avatarUrl       String?
+  theme           String         @default("midnight")
+  editorFontSize  Int            @default(14)
+  defaultLanguage String         @default("python")
+  tabSize         Int            @default(2)
+  refreshToken    String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
   // Relations
   ownedRooms    Room[]         @relation("RoomOwner")

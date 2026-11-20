@@ -12,21 +12,21 @@ export const ToastContainer: React.FC = () => {
       {toasts.map((t) => (
         <div
           key={t.id}
-          className={`pointer-events-auto flex items-center space-x-2.5 px-4 py-3 rounded-lg shadow-xl border text-xs font-medium backdrop-blur-md transition-all duration-200 transform translate-y-0 opacity-100 ${
+          className={`pointer-events-auto flex items-center space-x-2.5 px-4 py-3 rounded-xl shadow-2xl border text-xs font-medium backdrop-blur-md transition-all duration-200 transform translate-y-0 opacity-100 ${
             t.type === 'error'
-              ? 'bg-[#2a1215]/90 border-red-500/40 text-red-200'
+              ? 'bg-app-surface border-app-danger/40 text-app-text shadow-red-500/5'
               : t.type === 'success'
-              ? 'bg-[#0f2419]/90 border-emerald-500/40 text-emerald-200'
-              : 'bg-[#18202f]/90 border-sky-500/40 text-sky-200'
+              ? 'bg-app-surface border-app-success/40 text-app-text shadow-emerald-500/5'
+              : 'bg-app-surface border-app-accent/40 text-app-text shadow-sky-500/5'
           }`}
         >
-          {t.type === 'error' && <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />}
-          {t.type === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
-          {t.type === 'info' && <Info className="w-4 h-4 text-sky-400 shrink-0" />}
+          {t.type === 'error' && <AlertCircle className="w-4 h-4 text-app-danger shrink-0" />}
+          {t.type === 'success' && <CheckCircle2 className="w-4 h-4 text-app-success shrink-0" />}
+          {t.type === 'info' && <Info className="w-4 h-4 text-app-accent shrink-0" />}
           <span className="leading-snug max-w-xs">{t.message}</span>
           <button
             onClick={() => removeToast(t.id)}
-            className="ml-2 hover:opacity-80 p-0.5 rounded text-gray-400 hover:text-white transition"
+            className="ml-2 hover:opacity-80 p-0.5 rounded text-app-text-muted hover:text-app-text transition"
           >
             <X className="w-3.5 h-3.5" />
           </button>

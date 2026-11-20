@@ -33,6 +33,8 @@ Thumbs.db
 # Docker volumes & local data
 pgdata/
 redisdata/
+uploads/
+server/uploads/
 
 # Temporary files
 *.tmp

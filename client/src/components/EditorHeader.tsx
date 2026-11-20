@@ -3,11 +3,13 @@ import { Play, Share2, Users, Circle, Code2, ArrowLeft, Check, Eye, PenLine, Loa
 import { Room, RoomRole, SupportedLanguage } from '../types';
 import { toast } from '../store/toastStore';
 import { getUserInitials } from '../utils/colors';
+import { ThemeSwitcher } from './ThemeSwitcher';
 
 export interface ActiveUser {
   clientId: number;
   name: string;
   color: string;
+  avatarUrl?: string | null;
   isCurrentUser?: boolean;
 }
 
@@ -49,32 +51,32 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
   const displayUserCount = Math.max(activeUsers.length, 1);
 
   return (
-    <header className="h-12 bg-[#252526] border-b border-[#3c3c3c] px-4 flex items-center justify-between select-none">
+    <header className="h-12 bg-app-surface border-b border-app-border px-3 sm:px-4 flex items-center justify-between select-none">
       {/* Brand & Room Info */}
-      <div className="flex items-center space-x-3">
+      <div className="flex items-center space-x-2.5 sm:space-x-3">
         {onBackToDashboard && (
           <button
             onClick={onBackToDashboard}
-            className="text-gray-400 hover:text-white p-1 hover:bg-[#323233] rounded transition"
+            className="text-app-text-muted hover:text-app-text p-1 hover:bg-app-surface-2 rounded-lg transition"
             title="Back to Dashboard"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
         )}
 
-        <div className="flex items-center space-x-2 text-sky-400 font-semibold tracking-wide">
-          <Code2 className="w-5 h-5" />
-          <span className="text-sm font-bold text-gray-100">LiveCode</span>
+        <div className="flex items-center space-x-2 text-app-accent font-semibold tracking-wide">
+          <Code2 className="w-5 h-5 shrink-0" />
+          <span className="hidden md:inline text-xs font-bold text-app-text font-heading">LiveCode</span>
         </div>
 
-        <span className="text-gray-500 text-xs">/</span>
+        <span className="text-app-border text-xs hidden md:inline">/</span>
 
         {/* Room Name & Code */}
         <div className="flex items-center space-x-2">
-          <span className="text-xs text-gray-200 font-medium max-w-xs truncate">
+          <span className="text-xs text-app-text font-medium max-w-[120px] sm:max-w-xs truncate">
             {room?.name || 'Collaborative Room'}
           </span>
-          <span className="text-xs text-sky-400 font-mono bg-[#1e1e1e] px-2 py-0.5 rounded border border-[#3c3c3c]">
+          <span className="text-[11px] text-app-accent font-mono bg-app-surface-2 px-2 py-0.5 rounded border border-app-border">
             {room?.shortId || 'session'}
           </span>
         </div>
@@ -82,12 +84,12 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
         {/* Role Badge */}
         {role && (
           <span
-            className={`text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded ${
+            className={`text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded ${
               role === 'OWNER'
-                ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-500/30'
+                ? 'bg-app-success/15 text-app-success border border-app-success/30'
                 : role === 'EDITOR'
-                ? 'bg-sky-950/80 text-sky-400 border border-sky-500/30'
-                : 'bg-amber-950/80 text-amber-400 border border-amber-500/30'
+                ? 'bg-app-accent/15 text-app-accent border border-app-accent/30'
+                : 'bg-app-warning/15 text-app-warning border border-app-warning/30'
             }`}
           >
             {role}
@@ -96,37 +98,37 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
 
         {/* VIEWER View-Only Badge */}
         {isViewer && (
-          <span className="flex items-center space-x-1 text-[10px] font-bold tracking-wider px-2 py-0.5 rounded bg-amber-900/40 text-amber-300 border border-amber-500/40">
+          <span className="hidden sm:flex items-center space-x-1 text-[10px] font-bold tracking-wider px-2 py-0.5 rounded bg-app-warning/20 text-app-warning border border-app-warning/40">
             <Eye className="w-3 h-3" />
             <span>VIEW ONLY</span>
           </span>
         )}
 
         {/* Real-time Connection Status */}
-        <div className="hidden sm:flex items-center space-x-1.5 pl-2 text-xs">
+        <div className="hidden lg:flex items-center space-x-1.5 pl-2 text-xs">
           {connectionStatus === 'connected' && (
             <>
-              <Circle className="w-2 h-2 fill-emerald-400 text-emerald-400 animate-pulse" />
-              <span className="text-emerald-400 text-[11px] font-medium">Online</span>
+              <Circle className="w-2 h-2 fill-app-success text-app-success animate-pulse" />
+              <span className="text-app-success text-[11px] font-medium">Online</span>
             </>
           )}
           {connectionStatus === 'connecting' && (
             <>
-              <Circle className="w-2 h-2 fill-amber-400 text-amber-400 animate-ping" />
-              <span className="text-amber-400 text-[11px] font-medium">Reconnecting...</span>
+              <Circle className="w-2 h-2 fill-app-warning text-app-warning animate-ping" />
+              <span className="text-app-warning text-[11px] font-medium">Reconnecting...</span>
             </>
           )}
           {connectionStatus === 'disconnected' && (
             <>
-              <Circle className="w-2 h-2 fill-red-400 text-red-400" />
-              <span className="text-red-400 text-[11px] font-medium">Offline</span>
+              <Circle className="w-2 h-2 fill-app-danger text-app-danger" />
+              <span className="text-app-danger text-[11px] font-medium">Offline</span>
             </>
           )}
         </div>
 
-        {/* "Rahul is typing..." indicator */}
+        {/* Typing indicator */}
         {typingUsers.length > 0 && (
-          <div className="hidden md:flex items-center space-x-1.5 pl-3 text-sky-400 text-[11px] italic animate-pulse">
+          <div className="hidden xl:flex items-center space-x-1.5 pl-2 text-app-accent text-[11px] italic animate-pulse">
             <PenLine className="w-3 h-3" />
             <span>
               {typingUsers.length === 1
@@ -138,32 +140,29 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
       </div>
 
       {/* Center / Action Toolbar */}
-      <div className="flex items-center space-x-3">
+      <div className="flex items-center space-x-2 sm:space-x-3">
         {/* Language Selector Dropdown */}
         <div className="flex items-center space-x-1.5">
-          <label htmlFor="language-select" className="text-xs text-gray-400 font-medium hidden md:inline">
-            Language:
-          </label>
           <select
             id="language-select"
             value={language}
             disabled={isViewer}
             onChange={(e) => onLanguageChange(e.target.value as SupportedLanguage)}
             title={isViewer ? 'Language changes disabled in View-Only mode' : 'Change workspace language'}
-            className="bg-[#1e1e1e] text-gray-200 text-xs rounded border border-[#3c3c3c] px-2.5 py-1.5 focus:outline-none focus:border-sky-500 font-mono transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            className="bg-app-surface-2 text-app-text text-xs rounded-lg border border-app-border px-2.5 py-1.5 focus:outline-none focus:border-app-accent focus:ring-1 focus:ring-app-accent font-mono transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <option value="python">Python 3.11</option>
-            <option value="javascript">JavaScript (Node.js)</option>
+            <option value="javascript">JavaScript (Node)</option>
             <option value="java">Java 17</option>
             <option value="cpp">C++ (g++ 13)</option>
           </select>
         </div>
 
-        {/* Run Button */}
+        {/* Prominent Run Button */}
         <button
           onClick={onRunCode}
           disabled={isRunning || isViewer}
-          className="flex items-center space-x-1.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold px-3 py-1.5 rounded transition shadow-sm"
+          className="flex items-center space-x-1.5 bg-app-success hover:opacity-90 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition shadow-sm font-heading"
           title={isViewer ? 'Code execution disabled for Viewers' : 'Run code in Docker Sandbox'}
         >
           {isRunning ? (
@@ -175,23 +174,27 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
         </button>
       </div>
 
-      {/* Right Collaboration Avatars & Share */}
+      {/* Right Collaboration Avatars, Theme & Share */}
       <div className="flex items-center space-x-2">
         {/* Active Users Initials Stack */}
         <div className="hidden sm:flex items-center -space-x-1.5 mr-1">
-          {activeUsers.slice(0, 4).map((user) => (
+          {activeUsers.slice(0, 4).map((u) => (
             <div
-              key={user.clientId}
-              className="w-6 h-6 rounded-full border-2 border-[#252526] flex items-center justify-center text-[10px] font-bold text-white shadow-sm cursor-default select-none"
-              style={{ backgroundColor: user.color }}
-              title={`${user.name}${user.isCurrentUser ? ' (You)' : ''}`}
+              key={u.clientId}
+              className="w-6 h-6 rounded-full border-2 border-app-surface overflow-hidden flex items-center justify-center text-[10px] font-bold text-white shadow-sm cursor-default select-none"
+              style={{ backgroundColor: u.color }}
+              title={`${u.name}${u.isCurrentUser ? ' (You)' : ''}`}
             >
-              {getUserInitials(user.name)}
+              {u.avatarUrl ? (
+                <img src={u.avatarUrl} alt={u.name} className="w-full h-full object-cover" />
+              ) : (
+                getUserInitials(u.name)
+              )}
             </div>
           ))}
           {activeUsers.length > 4 && (
             <div
-              className="w-6 h-6 rounded-full border-2 border-[#252526] bg-[#3c3c3c] flex items-center justify-center text-[9px] font-bold text-gray-300"
+              className="w-6 h-6 rounded-full border-2 border-app-surface bg-app-surface-2 flex items-center justify-center text-[9px] font-bold text-app-text-muted"
               title={`${activeUsers.length - 4} more users`}
             >
               +{activeUsers.length - 4}
@@ -200,21 +203,24 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
         </div>
 
         {/* Real User Count Badge */}
-        <div className="flex items-center space-x-1 bg-[#1e1e1e] border border-[#3c3c3c] rounded px-2 py-1 text-xs text-gray-300">
-          <Users className="w-3.5 h-3.5 text-sky-400" />
+        <div className="hidden sm:flex items-center space-x-1 bg-app-surface-2 border border-app-border rounded-lg px-2 py-1 text-xs text-app-text-muted">
+          <Users className="w-3.5 h-3.5 text-app-accent" />
           <span className="text-[11px] font-medium">
             {displayUserCount} {displayUserCount === 1 ? 'user' : 'users'}
           </span>
         </div>
 
+        {/* Header Theme Switcher */}
+        <ThemeSwitcher compact />
+
         {/* Share Button with Link Copying */}
         <button
           onClick={handleShare}
-          className="flex items-center space-x-1.5 bg-[#323233] hover:bg-[#3c3c3c] text-gray-200 hover:text-white text-xs px-2.5 py-1 rounded border border-[#3c3c3c] transition shadow-sm"
+          className="flex items-center space-x-1.5 bg-app-surface-2 hover:bg-app-border text-app-text text-xs px-2.5 py-1.5 rounded-lg border border-app-border transition shadow-sm font-medium"
           title="Share room link"
         >
-          {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Share2 className="w-3.5 h-3.5 text-sky-400" />}
-          <span className="hidden sm:inline text-[11px] font-medium">
+          {copied ? <Check className="w-3.5 h-3.5 text-app-success" /> : <Share2 className="w-3.5 h-3.5 text-app-accent" />}
+          <span className="hidden sm:inline text-[11px]">
             {copied ? 'Copied!' : 'Share'}
           </span>
         </button>

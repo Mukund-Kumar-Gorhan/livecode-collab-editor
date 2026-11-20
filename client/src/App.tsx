@@ -5,6 +5,7 @@ import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { RoomPage } from './pages/RoomPage';
+import { ProfilePage } from './pages/ProfilePage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { ToastContainer } from './components/ToastContainer';
 
@@ -36,6 +37,16 @@ export const App: React.FC = () => {
           element={
             <ProtectedRoute>
               <DashboardPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Protected Profile Route */}
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <ProfilePage />
             </ProtectedRoute>
           }
         />

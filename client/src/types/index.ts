@@ -1,5 +1,7 @@
 export type SupportedLanguage = 'python' | 'javascript' | 'java' | 'cpp';
 
+export type AppTheme = 'midnight' | 'light' | 'dracula' | 'one-dark' | 'cyberpunk';
+
 export interface LanguageOption {
   id: SupportedLanguage;
   name: string;
@@ -10,8 +12,15 @@ export interface User {
   id: string;
   email: string;
   name: string | null;
+  bio?: string | null;
+  avatarColor?: string | null;
   avatarUrl?: string | null;
+  theme?: AppTheme;
+  editorFontSize?: number;
+  defaultLanguage?: SupportedLanguage;
+  tabSize?: number;
   createdAt?: string;
+  updatedAt?: string;
 }
 
 export type RoomRole = 'OWNER' | 'EDITOR' | 'VIEWER';
@@ -26,6 +35,7 @@ export interface RoomMember {
     id: string;
     name: string | null;
     email: string;
+    avatarColor?: string | null;
     avatarUrl?: string | null;
   };
 }
@@ -44,6 +54,8 @@ export interface Room {
     id: string;
     name: string | null;
     email: string;
+    avatarColor?: string | null;
+    avatarUrl?: string | null;
   };
   members?: RoomMember[];
   _count?: {
@@ -55,6 +67,7 @@ export interface UserPresence {
   userId: string;
   name: string;
   color: string;
+  avatarUrl?: string | null;
   cursor?: {
     lineNumber: number;
     column: number;
@@ -79,4 +92,3 @@ export interface RunResult {
   runById?: string;
   timestamp: number;
 }
-

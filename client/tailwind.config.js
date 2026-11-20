@@ -8,16 +8,33 @@ export default {
   theme: {
     extend: {
       colors: {
+        app: {
+          bg: 'var(--bg)',
+          surface: 'var(--surface)',
+          'surface-2': 'var(--surface-2)',
+          border: 'var(--border)',
+          text: 'var(--text)',
+          'text-muted': 'var(--text-muted)',
+          accent: 'var(--accent)',
+          'accent-contrast': 'var(--accent-contrast)',
+          success: 'var(--success)',
+          danger: 'var(--danger)',
+          warning: 'var(--warning)',
+        },
         editor: {
-          bg: '#1e1e1e',
-          sidebar: '#252526',
-          header: '#323233',
-          border: '#3c3c3c',
-          text: '#cccccc',
+          bg: 'var(--bg)',
+          sidebar: 'var(--surface)',
+          header: 'var(--surface-2)',
+          border: 'var(--border)',
+          text: 'var(--text)',
         }
+      },
+      fontFamily: {
+        heading: ['"Plus Jakarta Sans"', 'sans-serif'],
+        sans: ['"Inter"', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'Consolas', 'monospace'],
       }
     },
   },
   plugins: [],
 }
-

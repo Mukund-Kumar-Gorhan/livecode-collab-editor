@@ -189,6 +189,61 @@ export const roomApi = {
   },
 };
 
+// User Profile endpoints
+export const userApi = {
+  getMe: async () => {
+    const res = await apiClient.get<{ success: boolean; data: { user: User } }>('/users/me');
+    return res.data;
+  },
+
+  updateMe: async (payload: {
+    name?: string;
+    bio?: string | null;
+    avatarColor?: string | null;
+    theme?: string;
+    editorFontSize?: number;
+    defaultLanguage?: SupportedLanguage;
+    tabSize?: number;
+  }) => {
+    const res = await apiClient.patch<{
+      success: boolean;
+      message: string;
+      data: { user: User };
+    }>('/users/me', payload);
+    return res.data;
+  },
+
+  uploadAvatar: async (file: File | Blob) => {
+    const res = await apiClient.post<{
+      success: boolean;
+      message: string;
+      data: { user: User };
+    }>('/users/me/avatar', file, {
+      headers: {
+        'Content-Type': file.type || 'image/png',
+      },
+    });
+    return res.data;
+  },
+
+  deleteAvatar: async () => {
+    const res = await apiClient.delete<{
+      success: boolean;
+      message: string;
+      data: { user: User };
+    }>('/users/me/avatar');
+    return res.data;
+  },
+
+  changePassword: async (payload: { currentPassword: string; newPassword: string }) => {
+    const res = await apiClient.patch<{
+      success: boolean;
+      message: string;
+    }>('/users/me/password', payload);
+    return res.data;
+  },
+};
+
 // Runner service API
 export const runnerApi = {
   checkHealth: async () => {

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { User } from '../types';
-import { authApi, injectAuthStore } from '../services/api';
+import { authApi, userApi, injectAuthStore } from '../services/api';
+import { useThemeStore } from './themeStore';
 
 interface AuthState {
   user: User | null;
@@ -13,6 +14,7 @@ interface AuthState {
   checkAuth: () => Promise<void>;
   setAccessToken: (token: string | null) => void;
   setUser: (user: User | null) => void;
+  refreshProfile: () => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => {
@@ -35,17 +37,24 @@ export const useAuthStore = create<AuthState>((set, get) => {
 
     setUser: (user: User | null) => {
       set({ user });
+      if (user?.theme) {
+        useThemeStore.getState().initTheme(user.theme);
+      }
     },
 
     login: async (email: string, password: string) => {
       set({ isLoading: true });
       try {
         const response = await authApi.login({ email, password });
+        const loggedUser = response.data.user;
         set({
-          user: response.data.user,
+          user: loggedUser,
           accessToken: response.data.accessToken,
           isLoading: false,
         });
+        if (loggedUser.theme) {
+          useThemeStore.getState().initTheme(loggedUser.theme);
+        }
       } catch (error) {
         set({ isLoading: false });
         throw error;
@@ -58,11 +67,15 @@ export const useAuthStore = create<AuthState>((set, get) => {
         await authApi.register({ name, email, password });
         // Automatically login after successful registration
         const loginResponse = await authApi.login({ email, password });
+        const loggedUser = loginResponse.data.user;
         set({
-          user: loginResponse.data.user,
+          user: loggedUser,
           accessToken: loginResponse.data.accessToken,
           isLoading: false,
         });
+        if (loggedUser.theme) {
+          useThemeStore.getState().initTheme(loggedUser.theme);
+        }
       } catch (error) {
         set({ isLoading: false });
         throw error;
@@ -83,12 +96,16 @@ export const useAuthStore = create<AuthState>((set, get) => {
       set({ isLoading: true });
       try {
         const response = await authApi.refresh();
+        const currentUser = response.data.user;
         set({
-          user: response.data.user,
+          user: currentUser,
           accessToken: response.data.accessToken,
           isInitialized: true,
           isLoading: false,
         });
+        if (currentUser.theme) {
+          useThemeStore.getState().initTheme(currentUser.theme);
+        }
       } catch {
         set({
           user: null,
@@ -96,6 +113,19 @@ export const useAuthStore = create<AuthState>((set, get) => {
           isInitialized: true,
           isLoading: false,
         });
+      }
+    },
+
+    refreshProfile: async () => {
+      try {
+        const res = await userApi.getMe();
+        const updated = res.data.user;
+        set({ user: updated });
+        if (updated.theme) {
+          useThemeStore.getState().initTheme(updated.theme);
+        }
+      } catch {
+        // Ignore refresh failure
       }
     },
   };

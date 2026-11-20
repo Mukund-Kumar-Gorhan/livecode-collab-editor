@@ -23,6 +23,20 @@ const loginSchema = z.object({
 const REFRESH_COOKIE_NAME = 'refreshToken';
 const REFRESH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 
+const SAFE_AUTH_USER_SELECT = {
+  id: true,
+  name: true,
+  email: true,
+  bio: true,
+  avatarColor: true,
+  avatarUrl: true,
+  theme: true,
+  editorFontSize: true,
+  defaultLanguage: true,
+  tabSize: true,
+  createdAt: true,
+} as const;
+
 export const register = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const validatedData = registerSchema.parse(req.body);
@@ -44,12 +58,7 @@ export const register = async (req: Request, res: Response, next: NextFunction):
         email: validatedData.email,
         passwordHash,
       },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        createdAt: true,
-      },
+      select: SAFE_AUTH_USER_SELECT,
     });
 
     res.status(201).json({
@@ -105,6 +114,14 @@ export const login = async (req: Request, res: Response, next: NextFunction): Pr
           id: user.id,
           name: user.name,
           email: user.email,
+          bio: user.bio,
+          avatarColor: user.avatarColor,
+          avatarUrl: user.avatarUrl,
+          theme: user.theme,
+          editorFontSize: user.editorFontSize,
+          defaultLanguage: user.defaultLanguage,
+          tabSize: user.tabSize,
+          createdAt: user.createdAt,
         },
       },
     });
@@ -160,6 +177,14 @@ export const refreshToken = async (req: Request, res: Response, next: NextFuncti
           id: user.id,
           name: user.name,
           email: user.email,
+          bio: user.bio,
+          avatarColor: user.avatarColor,
+          avatarUrl: user.avatarUrl,
+          theme: user.theme,
+          editorFontSize: user.editorFontSize,
+          defaultLanguage: user.defaultLanguage,
+          tabSize: user.tabSize,
+          createdAt: user.createdAt,
         },
       },
     });
@@ -208,13 +233,7 @@ export const getMe = async (req: Request, res: Response, next: NextFunction): Pr
 
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        avatarUrl: true,
-        createdAt: true,
-      },
+      select: SAFE_AUTH_USER_SELECT,
     });
 
     if (!user) {

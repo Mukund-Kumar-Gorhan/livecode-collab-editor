@@ -4,12 +4,16 @@ import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import { MonacoBinding } from 'y-monaco';
 import { SupportedLanguage } from '../types';
+import { useThemeStore } from '../store/themeStore';
+import { registerMonacoThemes, getMonacoThemeName } from '../utils/monacoThemes';
 
 interface CodeEditorProps {
   language: SupportedLanguage;
   ydoc: Y.Doc | null;
   provider: WebsocketProvider | null;
   isViewer?: boolean;
+  fontSize?: number;
+  tabSize?: number;
 }
 
 const mapLanguageToMonaco = (lang: SupportedLanguage): string => {
@@ -32,14 +36,38 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   ydoc,
   provider,
   isViewer = false,
+  fontSize = 14,
+  tabSize = 2,
 }) => {
-  // Editor ko STATE me rakho taaki mount hote hi effects dobara chalein
+  const { theme } = useThemeStore();
   const [editor, setEditor] = useState<any>(null);
+  const monacoRef = useRef<any>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleEditorDidMount: OnMount = (ed) => {
+  const handleEditorDidMount: OnMount = (ed, monaco) => {
     setEditor(ed);
+    monacoRef.current = monaco;
+    registerMonacoThemes(monaco);
+    monaco.editor.setTheme(getMonacoThemeName(theme));
   };
+
+  // Sync Monaco editor theme whenever app theme changes
+  useEffect(() => {
+    if (monacoRef.current) {
+      registerMonacoThemes(monacoRef.current);
+      monacoRef.current.editor.setTheme(getMonacoThemeName(theme));
+    }
+  }, [theme]);
+
+  // Update dynamic editor options (font size, tab size)
+  useEffect(() => {
+    if (editor) {
+      editor.updateOptions({
+        fontSize,
+        tabSize,
+      });
+    }
+  }, [editor, fontSize, tabSize]);
 
   // 1) Binding: editor + ydoc + provider teeno ready hone par hi banegi
   useEffect(() => {
@@ -85,6 +113,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
               top: -1.4em;
               left: -2px;
               font-size: 10px;
+              font-family: 'JetBrains Mono', monospace;
               font-weight: 600;
               line-height: normal;
               background-color: ${color};
@@ -94,7 +123,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
               white-space: nowrap;
               pointer-events: none;
               z-index: 100;
-              box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+              box-shadow: 0 1px 4px rgba(0,0,0,0.3);
             }
           `;
         }
@@ -143,21 +172,21 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   }, []);
 
   return (
-    <div className="w-full h-full flex flex-col bg-[#1e1e1e] relative">
+    <div className="w-full h-full flex flex-col bg-app-bg relative">
       <Editor
         height="100%"
-        theme="vs-dark"
+        theme={getMonacoThemeName(theme)}
         language={mapLanguageToMonaco(language)}
         onMount={handleEditorDidMount}
         options={{
           minimap: { enabled: true },
-          fontSize: 14,
-          fontFamily: "'Fira Code', 'JetBrains Mono', Consolas, 'Courier New', monospace",
+          fontSize,
+          fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, 'Courier New', monospace",
           fontLigatures: true,
           lineNumbers: 'on',
           scrollBeyondLastLine: false,
           automaticLayout: true,
-          tabSize: 2,
+          tabSize,
           wordWrap: 'on',
           cursorBlinking: 'smooth',
           cursorSmoothCaretAnimation: 'on',

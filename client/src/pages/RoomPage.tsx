@@ -107,11 +107,12 @@ export const RoomPage: React.FC = () => {
     });
 
     // Set local awareness user details
-    const userColor = getUserColor(user?.id || user?.email || 'guest');
+    const userColor = user?.avatarColor || getUserColor(user?.id || user?.email || 'guest');
     const userName = user?.name || user?.email?.split('@')[0] || 'Anonymous';
     provider.awareness.setLocalStateField('user', {
       name: userName,
       color: userColor,
+      avatarUrl: user?.avatarUrl || null,
       userId: user?.id,
     });
 
@@ -128,6 +129,7 @@ export const RoomPage: React.FC = () => {
             clientId,
             name: state.user.name || 'Anonymous',
             color: state.user.color || '#0ea5e9',
+            avatarUrl: state.user.avatarUrl || null,
             isCurrentUser: isSelf,
           });
 
@@ -269,32 +271,34 @@ export const RoomPage: React.FC = () => {
             ydoc={collab?.ydoc ?? null}
             provider={collab?.provider ?? null}
             isViewer={role === 'VIEWER'}
+            fontSize={user?.editorFontSize || 14}
+            tabSize={user?.tabSize || 2}
           />
         </div>
 
         {/* Bottom Output Console Panel */}
-        <div className="h-48 bg-[#181818] border-t border-[#3c3c3c] flex flex-col">
-          <div className="h-7 bg-[#252526] px-3 flex items-center justify-between border-b border-[#3c3c3c] text-xs select-none">
-            <div className="flex items-center space-x-2 text-gray-300">
-              <Terminal className="w-3.5 h-3.5 text-sky-400" />
-              <span className="font-semibold text-[11px] uppercase tracking-wider">Console Output</span>
+        <div className="h-48 bg-app-bg border-t border-app-border flex flex-col">
+          <div className="h-7 bg-app-surface px-3 flex items-center justify-between border-b border-app-border text-xs select-none">
+            <div className="flex items-center space-x-2 text-app-text-muted">
+              <Terminal className="w-3.5 h-3.5 text-app-accent" />
+              <span className="font-semibold text-[11px] uppercase tracking-wider text-app-text">Console Output</span>
             </div>
 
             {/* Real Runner Health Indicator */}
             {runnerStatus === 'connected' && (
-              <div className="flex items-center space-x-1.5 text-emerald-400 text-[11px]">
+              <div className="flex items-center space-x-1.5 text-app-success text-[11px]">
                 <CheckCircle2 className="w-3 h-3" />
                 <span>Runner: Ready (Docker Sandbox)</span>
               </div>
             )}
             {runnerStatus === 'checking' && (
-              <div className="flex items-center space-x-1.5 text-amber-400 text-[11px]">
+              <div className="flex items-center space-x-1.5 text-app-warning text-[11px]">
                 <Loader2 className="w-3 h-3 animate-spin" />
                 <span>Runner: Checking health...</span>
               </div>
             )}
             {runnerStatus === 'disconnected' && (
-              <div className="flex items-center space-x-1.5 text-red-400 text-[11px]" title="Runner service unreachable at http://localhost:4000">
+              <div className="flex items-center space-x-1.5 text-app-danger text-[11px]" title="Runner service unreachable at http://localhost:4000">
                 <AlertCircle className="w-3 h-3" />
                 <span>Runner: Offline</span>
               </div>
@@ -302,27 +306,27 @@ export const RoomPage: React.FC = () => {
           </div>
 
           {/* Console Content: Observes latestRun from Y.Map("run") */}
-          <div className="flex-1 p-3 font-mono text-xs overflow-y-auto selection:bg-sky-900 leading-relaxed">
+          <div className="flex-1 p-3 font-mono text-xs overflow-y-auto selection:bg-app-accent/30 leading-relaxed text-app-text">
             {latestRun ? (
               <div className="flex flex-col space-y-2">
                 {/* Meta details bar */}
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] pb-1.5 border-b border-[#2d2d2d] text-gray-400">
-                  <span className="text-sky-400 font-semibold">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] pb-1.5 border-b border-app-border text-app-text-muted">
+                  <span className="text-app-accent font-semibold">
                     Run by {latestRun.runBy}
                   </span>
                   <span>•</span>
                   <span>
-                    Duration: <span className="text-gray-200">{latestRun.durationMs}ms</span>
+                    Duration: <span className="text-app-text">{latestRun.durationMs}ms</span>
                   </span>
                   <span>•</span>
                   <span>
                     Exit code:{' '}
-                    <span className={latestRun.exitCode === 0 ? 'text-emerald-400' : 'text-red-400'}>
+                    <span className={latestRun.exitCode === 0 ? 'text-app-success font-semibold' : 'text-app-danger font-semibold'}>
                       {latestRun.exitCode ?? 'none'}
                     </span>
                   </span>
                   {latestRun.timedOut && (
-                    <span className="bg-amber-950/80 text-amber-400 border border-amber-500/40 px-2 py-0.5 rounded font-semibold text-[10px] animate-pulse">
+                    <span className="bg-app-warning/20 text-app-warning border border-app-warning/40 px-2 py-0.5 rounded font-semibold text-[10px] animate-pulse">
                       Time limit exceeded (5s)
                     </span>
                   )}
@@ -330,7 +334,7 @@ export const RoomPage: React.FC = () => {
 
                 {/* Explicit timeout notice */}
                 {latestRun.timedOut && (
-                  <div className="text-amber-400 font-semibold text-xs flex items-center space-x-1.5 bg-amber-950/20 p-2 rounded border border-amber-500/30">
+                  <div className="text-app-warning font-semibold text-xs flex items-center space-x-1.5 bg-app-warning/15 p-2 rounded border border-app-warning/30">
                     <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
                     <span>Time limit exceeded: Execution exceeded 5.0 seconds and container was terminated.</span>
                   </div>
@@ -338,27 +342,27 @@ export const RoomPage: React.FC = () => {
 
                 {/* Standard Output */}
                 {latestRun.stdout && (
-                  <div className="text-gray-200 whitespace-pre-wrap">
+                  <div className="text-app-text whitespace-pre-wrap">
                     {latestRun.stdout}
                   </div>
                 )}
 
                 {/* Standard Error (Red) */}
                 {latestRun.stderr && (
-                  <div className="text-red-400 whitespace-pre-wrap bg-red-950/20 p-2 rounded border border-red-500/20">
+                  <div className="text-app-danger whitespace-pre-wrap bg-app-danger/10 p-2 rounded border border-app-danger/25">
                     {latestRun.stderr}
                   </div>
                 )}
 
                 {/* Empty output notice */}
                 {!latestRun.stdout && !latestRun.stderr && !latestRun.timedOut && (
-                  <div className="text-gray-500 italic text-xs">
+                  <div className="text-app-text-muted italic text-xs">
                     (Process exited with code {latestRun.exitCode} without producing console output)
                   </div>
                 )}
               </div>
             ) : (
-              <div className="text-gray-400 whitespace-pre-wrap">
+              <div className="text-app-text-muted whitespace-pre-wrap">
                 {consoleOutput}
               </div>
             )}

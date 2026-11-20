@@ -33,3 +33,22 @@ export const runRateLimiter = rateLimit({
   },
 });
 
+export const profileRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 60, // max 60 profile updates per 15 minutes
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { keyGeneratorIpFallback: false },
+  keyGenerator: (req) => {
+    const user = (req as any).user;
+    return user?.id || req.ip || 'anonymous';
+  },
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      message: 'Too many profile requests, please try again later.',
+      code: 'RATE_LIMIT_EXCEEDED',
+    });
+  },
+});
+

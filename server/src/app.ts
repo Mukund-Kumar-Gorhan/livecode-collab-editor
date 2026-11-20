@@ -6,11 +6,15 @@ import { config } from './config/index.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { authRouter } from './routes/auth.routes.js';
 import { roomRouter } from './routes/room.routes.js';
+import { userRouter } from './routes/user.routes.js';
+import path from 'path';
 
 export const app = express();
 
 // Security and utility middleware
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
 app.use(
   cors({
     origin: config.clientOrigin,
@@ -20,6 +24,9 @@ app.use(
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Serve static uploaded files (avatars, etc.)
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 // Health Check Route
 app.get('/health', (req, res) => {
@@ -35,6 +42,7 @@ app.get('/health', (req, res) => {
 // API Routes
 app.use('/api/auth', authRouter);
 app.use('/api/rooms', roomRouter);
+app.use('/api/users', userRouter);
 
 // Centralized error handling
 app.use(errorHandler);
