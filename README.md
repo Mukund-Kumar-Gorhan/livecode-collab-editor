@@ -1,179 +1,102 @@
-# Real-Time Collaborative Code Editor (LiveCode)
+# LiveCode: Real-Time Collaborative Code Editor
 
-An advanced real-time collaborative code editor monorepo (mini VS Code Live Share / Replit) engineered with modern full-stack web technologies and sandboxed multi-language code execution.
+Multiple users ek hi room me ek saath code likhte hain (Google Docs jaisa),
+aur code Docker sandbox me safely run hota hai.
 
----
+![LiveCode](docs/screenshot.png)
 
-## 1. Project Overview
+## Features
 
-- **Monorepo Architecture**: Clean separation of concerns with npm workspaces (`client`, `server`, `runner`).
-- **Real-Time Collaboration**: Built for Yjs CRDT-based multi-user synchronization with cursor awareness.
-- **Sandboxed Code Execution**: Dedicated runner service invoking security-hardened Docker containers with strict resource and network isolation.
-- **Enterprise-Grade Stack**: Node.js, Express, React, TypeScript, Monaco Editor, Tailwind CSS, PostgreSQL 16 (via Prisma ORM), and Redis 7.
+- JWT auth (access + refresh token), Owner / Editor / Viewer roles
+- Real-time editing with Yjs (CRDT): live cursors, user names, conflict-free merge
+- Docker sandbox execution: Python, JavaScript, Java, C, C++
+- Multi-file workspace: file explorer, tabs, folder upload, ZIP download, entry file
+- stdin input box, output shared with every user in the room
+- 5 themes and an editable profile
+- Document persistence in PostgreSQL (code survives restarts)
 
----
-
-## 2. ASCII Architecture Diagram
-
-```
-+-------------------------------------------------------------------------+
-|                              CLIENT BROWSER                             |
-|    React 18 + Vite + Monaco Editor (@monaco-editor/react) + Tailwind    |
-|                 Yjs CRDT Document + Monaco Binding                      |
-+---------------------+-------------------------------+-------------------+
-                      | HTTP (REST)                   | WebSocket (ws)
-                      v                               v
-+-------------------------------------------------------------------------+
-|                               SERVER POD                                |
-|             Node.js + Express + TypeScript + Prisma ORM                 |
-|   - REST API (/health, /api/auth, /api/rooms)                           |
-|   - WebSocket Gateway (/ws - connection lifecycle & sync)               |
-+---------------------+-------------------------------+-------------------+
-                      |                               |
-                      v                               v
-       +------------------------------+  +-------------------------------+
-       |        PostgreSQL 16         |  |            Redis 7            |
-       |  - Users, Rooms, Members     |  |  - Pub/Sub Room Messaging     |
-       |  - Snapshots, ExecutionLogs  |  |  - Presence & Ephemeral State |
-       +------------------------------+  +---------------+---------------+
-                                                         |
-                                                         | Job Dispatch
-                                                         v
-+-------------------------------------------------------------------------+
-|                             RUNNER SERVICE                              |
-|           Node.js + Express (POST /execute) + Concurrency Queue         |
-|   - Security Constraints: --network=none --memory=128m --cpus=0.5       |
-|     --pids-limit=64 --timeout=5s --user sandbox                         |
-+------------------------------------+------------------------------------+
-                                     |
-                                     v
-                   +-----------------------------------+
-                   |     EPHEMERAL DOCKER SANDBOX      |
-                   |  Python 3.11 | Node 20 | Java 17  |
-                   |               C++ (g++)           |
-                   +-----------------------------------+
-```
-
----
-
-## 3. Directory Structure
+## Architecture
 
 ```
-collab-editor/
-├── client/                     # Vite + React + Monaco Editor + Tailwind
-│   └── src/
-│       ├── components/         # CodeEditor, EditorHeader
-│       ├── pages/              # RoomPage
-│       ├── hooks/              # useSocket
-│       ├── services/           # api client
-│       ├── store/              # editorStore
-│       └── types/              # TypeScript definitions
-├── server/                     # Express REST & WebSocket API
-│   ├── src/
-│   │   ├── config/             # dotenv config loader
-│   │   ├── controllers/        # auth & room controllers
-│   │   ├── middleware/         # centralized error handling
-│   │   ├── routes/             # auth & room routes
-│   │   ├── services/           # room & snapshot service
-│   │   ├── sockets/            # WebSocket connection handler
-│   │   └── utils/              # logger
-│   └── prisma/schema.prisma    # PostgreSQL Schema
-├── runner/                     # Code Execution Engine
-│   └── src/
-│       ├── executor/           # Docker sandboxing engine (stub)
-│       ├── queue/              # In-memory / Redis queue
-│       └── languages/          # Language run configurations
-├── docker/
-│   └── sandbox/                # Minimal sandbox Dockerfiles (non-root)
-│       ├── python.Dockerfile
-│       ├── node.Dockerfile
-│       ├── java.Dockerfile
-│       └── cpp.Dockerfile
-├── docs/
-│   └── architecture.md         # System Architecture & Specs
-├── docker-compose.yml          # PostgreSQL 16 & Redis 7
-├── .env.example                # Environment variables template
-├── .gitignore
-├── .editorconfig
-└── README.md
+React + Monaco (client)
+        |  HTTP + WebSocket
+        v
+Express + Yjs server  --->  PostgreSQL
+        |
+        |  (shared secret header)
+        v
+Runner service  --->  Docker sandbox container (per run)
 ```
 
----
+## How it works
 
-## 4. Setup & Running Instructions
+1. Every room has one Yjs document. Each file is a shared text inside it.
+2. Edits travel over WebSocket and merge automatically (CRDT), so two people
+   typing on the same line never lose each other's changes.
+3. When someone presses Run, the server reads the code from its own copy of the
+   room document (it never trusts code sent by the browser) and asks the runner
+   to execute it.
+4. The runner starts a fresh Docker container, runs the code, kills it on
+   timeout, and returns the output. The result is written into the room
+   document, so every user sees it at the same time.
 
-### Prerequisites
-- Node.js >= 18 (Recommended Node 20 or 22)
-- npm >= 9
-- Docker & Docker Compose
+## Security
 
-### Step 1: Clone and Configure Environment
-```bash
-cd collab-editor
-cp .env.example .env
-```
+- Sandbox container: no network, read-only filesystem, 128 MB RAM (Java 384 MB),
+  0.5 CPU, limited processes, non-root user, all capabilities dropped,
+  5 second run timeout
+- Runner accepts requests only with a shared secret header
+- Role checks are enforced on the server (a Viewer's edits are rejected on the
+  WebSocket, not only disabled in the UI)
+- Rate limiting, Zod input validation, path traversal checks on uploads
 
-### Step 2: Spin Up Infrastructure (PostgreSQL 16 & Redis 7)
-```bash
-# Start PostgreSQL & Redis in background
-npm run docker:up
+## Setup
 
-# Verify running containers
-docker ps
-```
+Requirements: Node 20+, Docker Desktop
 
-### Step 3: Install Dependencies
 ```bash
 npm install
-```
-
-### Step 4: Run Prisma Setup (Database Migration)
-```bash
-# Generate Prisma Client
-npm run prisma:generate --workspace=server
-
-# Push schema to PostgreSQL (when Docker is running)
-# npm run prisma:migrate --workspace=server
-```
-
-### Step 5: Start All Services Concurrently
-```bash
+copy .env.example .env        # Windows (use cp on Mac/Linux)
+docker compose up -d
+npm run sandbox:build
+cd server && npx prisma migrate dev && cd ..
 npm run dev
 ```
 
-This single command boots all 3 subsystems simultaneously:
-- **Client**: `http://localhost:5173`
-- **Server**: `http://localhost:5000` (Health: `/health`, WS: `/ws`)
-- **Runner**: `http://localhost:4000` (Health: `/health`, Execute: `/execute`)
+Open http://localhost:5173 and use `localhost` (not an IP address).
 
-Or run each service individually:
+Run tests:
+
 ```bash
-# Client only
-npm run dev:client
-
-# Server only
-npm run dev:server
-
-# Runner only
-npm run dev:runner
+npx vitest run
 ```
 
----
+## Tech Stack
 
-## 5. Feature Roadmap Checklist
+React, TypeScript, Vite, Tailwind CSS, Monaco Editor, Yjs, Node.js, Express,
+Prisma, PostgreSQL, Docker, Vitest
 
-- [x] **Monorepo Scaffolding & Workspaces** (Client, Server, Runner)
-- [x] **Database Schema & ORM** (User, Room, RoomMember, Snapshot, ExecutionLog via Prisma)
-- [x] **Container Infrastructure** (Postgres 16, Redis 7 with healthchecks)
-- [x] **Minimal Working Sandbox Dockerfiles** (Python, Node, Java, C++ with non-root user)
-- [x] **Interactive Frontend Skeleton** (Monaco Editor, Language Switcher, Styled Run Button)
-- [ ] **Authentication System** (JWT access/refresh tokens, bcrypt password hashing, auth middleware)
-- [ ] **Room & Workspace Management** (Room CRUD, invitation links, role RBAC: OWNER/EDITOR/VIEWER)
-- [ ] **Yjs Real-Time CRDT Synchronization** (y-websocket provider, Monaco cursor awareness, shared buffers)
-- [ ] **Redis Multi-Pod Scaling** (Redis Pub/Sub adapter for horizontal WebSocket scaling)
-- [ ] **Docker Sandbox Production Execution** (dockerode integration, cgroup limits, tmpfs mounting)
-- [ ] **In-Editor Chat & User Presence** (Side panel chat, live cursor name tags, active peer avatars)
-- [ ] **Version History & Time-Travel** (Snapshot diff viewer, restore previous snapshot)
-- [ ] **Automated Testing Suite** (Unit tests with Vitest, E2E collaboration tests with Playwright)
-- [ ] **CI/CD Pipeline** (GitHub Actions for linting, type-check, automated tests, Docker image builds)
+## Known limitations
 
+- Docker sandbox is not production-grade isolation; real platforms use gVisor
+  or Firecracker
+- Program input must be written in the Input box before pressing Run
+  (no interactive terminal yet)
+- Runs on localhost; not deployed publicly
+
+## Roadmap
+
+- [x] Auth and rooms
+- [x] Yjs real-time sync
+- [x] Docker sandbox execution
+- [x] Multi-file workspace and folder upload
+- [x] Themes and profile
+- [ ] Members panel (change roles live)
+- [ ] Interactive terminal
+- [ ] More languages (TypeScript, Go)
+- [ ] Redis for horizontal scaling
+- [ ] Chat and version history
+
+## Author
+
+Mukund Kumar
