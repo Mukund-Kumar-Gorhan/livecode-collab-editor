@@ -67,7 +67,7 @@ export const SUPPORTED_LANGUAGES: Record<string, LanguageConfig> = {
     getRunArgs: () => [
       'sh',
       '-c',
-      `SOURCES=$(find /sandbox -type f \\( -name "*.cpp" -o -name "*.c" -o -name "*.cc" -o -name "*.cxx" \\) 2>/dev/null) && timeout 15 g++ -O2 -I/sandbox $SOURCES -o /tmp/main && timeout 5 /tmp/main`,
+      `SOURCES=$(find /sandbox -type f \\( -name "*.cpp" -o -name "*.c" -o -name "*.cc" -o -name "*.cxx" \\) 2>/dev/null) && timeout 15 g++ -O2 -I/sandbox $SOURCES -o /tmp/main && timeout 5 /tmp/main < /dev/null`,
     ],
     defaultTimeoutMs: 20000,
   },

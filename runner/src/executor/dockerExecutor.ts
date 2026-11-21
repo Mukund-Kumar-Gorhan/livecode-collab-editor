@@ -213,13 +213,52 @@ export class DockerExecutor {
       // This prevents Windows CreateProcess quote escaping and nested sh -c issues
       let runnerScript = '';
       if (options.language === 'python') {
-        runnerScript = `export PYTHONPATH=/sandbox:$PYTHONPATH\ncd /sandbox\ntimeout 5 python3 "${entry}"\n`;
+        runnerScript = `export PYTHONPATH=/sandbox:$PYTHONPATH\ncd /sandbox\ntimeout 5 python3 "${entry}" < /dev/null\n`;
       } else if (options.language === 'javascript') {
-        runnerScript = `cd /sandbox\ntimeout 5 node "${entry}"\n`;
+        runnerScript = `cd /sandbox\ntimeout 5 node "${entry}" < /dev/null\n`;
       } else if (options.language === 'java') {
-        runnerScript = `SOURCES=$(find /sandbox -type f -name "*.java" 2>/dev/null)\nif [ -z "$SOURCES" ]; then\n  echo "No Java source files found in workspace" >&2\n  exit 1\nfi\ntimeout 15 javac -J-Xmx128m -J-XX:TieredStopAtLevel=1 -d /tmp -cp /sandbox $SOURCES || exit $?\ntimeout 5 java -Xmx128m -XX:TieredStopAtLevel=1 -cp /tmp:/sandbox ${javaEntryClassName}\n`;
+        runnerScript = `SOURCES=$(find /sandbox -type f -name "*.java" 2>/dev/null)\nif [ -z "$SOURCES" ]; then\n  echo "No Java source files found in workspace" >&2\n  exit 1\nfi\ntimeout 15 javac -J-Xmx128m -J-XX:TieredStopAtLevel=1 -d /tmp -cp /sandbox $SOURCES || exit $?\ntimeout 5 java -Xmx128m -XX:TieredStopAtLevel=1 -cp /tmp:/sandbox ${javaEntryClassName} < /dev/null\n`;
       } else if (options.language === 'cpp') {
-        runnerScript = `SOURCES=$(find /sandbox -type f \\( -name "*.cpp" -o -name "*.c" -o -name "*.cc" -o -name "*.cxx" \\) 2>/dev/null)\nif [ -z "$SOURCES" ]; then\n  echo "No C/C++ source files found in workspace" >&2\n  exit 1\nfi\ntimeout 15 g++ -O2 -I/sandbox $SOURCES -o /tmp/main || exit $?\ntimeout 5 /tmp/main\n`;
+        // Identify all C/C++ source files in the workspace
+        const cExtensions = ['.cpp', '.c', '.cc', '.cxx'];
+        const cFiles = files.filter((f) => cExtensions.includes(path.extname(f.path).toLowerCase()));
+
+        // Entry file normalized path
+        const entryNorm = entry.replace(/^[/\\]+/, '');
+        const entryFileObj = cFiles.find((f) => f.path.replace(/^[/\\]+/, '') === entryNorm);
+
+        // Helper function to check if a source file contains a main() function definition
+        const hasMain = (code: string) => {
+          const stripped = code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '');
+          return /\b(int|void|signed)?\s*main\s*\(/.test(stripped);
+        };
+
+        // Files to compile: entry file + any helper C/C++ files that DO NOT contain main()
+        // If other files contain main() (e.g. user has hello.c, index.cpp, index2.cpp in the same room),
+        // they must NOT be compiled into the same binary to avoid "multiple definition of main" link errors.
+        const compileSources: string[] = [];
+        if (entryFileObj) {
+          compileSources.push(`/sandbox/${entryNorm}`);
+        } else if (cFiles.length > 0) {
+          compileSources.push(`/sandbox/${cFiles[0].path.replace(/^[/\\]+/, '')}`);
+        } else {
+          compileSources.push(`/sandbox/${entryNorm}`);
+        }
+
+        // Add helper files (only those without main())
+        for (const file of cFiles) {
+          const norm = file.path.replace(/^[/\\]+/, '');
+          if (compileSources.includes(`/sandbox/${norm}`)) continue;
+          if (!hasMain(file.content)) {
+            compileSources.push(`/sandbox/${norm}`);
+          }
+        }
+
+        const sourceArgs = compileSources.map((s) => `"${s}"`).join(' ');
+        const isPureC = compileSources.every((s) => s.endsWith('.c'));
+        const compiler = isPureC ? 'gcc' : 'g++';
+
+        runnerScript = `timeout 15 ${compiler} -O2 -I/sandbox ${sourceArgs} -o /tmp/main || exit $?\ntimeout 5 /tmp/main < /dev/null\n`;
       }
 
       await fs.writeFile(path.join(tempDir, '.run.sh'), runnerScript, { encoding: 'utf-8' });
@@ -256,6 +295,9 @@ export class DockerExecutor {
         const child = spawn('docker', dockerArgs, {
           windowsHide: true,
         });
+
+        // Close stdin immediately to prevent programs expecting interactive input from hanging
+        child.stdin.end();
 
         timeoutTimer = setTimeout(() => {
           timedOut = true;
