@@ -88,6 +88,7 @@ export interface RunResult {
   exitCode: number | null;
   durationMs: number;
   timedOut: boolean;
+  stdin?: string;
   runBy: string;
   runById?: string;
   timestamp: number;

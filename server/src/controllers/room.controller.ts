@@ -343,7 +343,18 @@ export const runRoomCode = async (req: Request, res: Response, next: NextFunctio
     }
 
     const { shortId } = req.params;
-    const { activeFile } = req.body || {};
+
+    const runSchema = z.object({
+      activeFile: z.string().optional(),
+      stdin: z.string().max(10 * 1024, 'Stdin input exceeds 10KB limit').optional(),
+    });
+
+    const parsedBody = runSchema.safeParse(req.body || {});
+    if (!parsedBody.success) {
+      const errorMsg = parsedBody.error.issues?.[0]?.message || 'Invalid run parameters';
+      throw new ApiError(errorMsg, 400, 'VALIDATION_ERROR');
+    }
+    const { activeFile } = parsedBody.data;
 
     const room = await prisma.room.findUnique({
       where: { shortId },
@@ -382,6 +393,16 @@ export const runRoomCode = async (req: Request, res: Response, next: NextFunctio
 
     let language: string = (metadataMap.get('language') as string) || room.language || 'python';
     let entry: string = (metadataMap.get('entryFile') as string) || '';
+
+    // Determine stdin (from request body or fallback to metadataMap.get('stdin'))
+    let stdin = parsedBody.data.stdin;
+    if (typeof stdin !== 'string') {
+      const metaStdin = metadataMap.get('stdin');
+      stdin = typeof metaStdin === 'string' ? metaStdin : '';
+    }
+    if (Buffer.byteLength(stdin, 'utf-8') > 10 * 1024) {
+      throw new ApiError('Stdin input exceeds 10KB limit', 400, 'VALIDATION_ERROR');
+    }
 
     // Prepare files array
     let files: Array<{ path: string; content: string }> = [];
@@ -482,7 +503,7 @@ export const runRoomCode = async (req: Request, res: Response, next: NextFunctio
           'Content-Type': 'application/json',
           'x-runner-secret': config.runnerSecret,
         },
-        body: JSON.stringify({ language, files, entry, code }),
+        body: JSON.stringify({ language, files, entry, code, stdin }),
       });
 
       if (!runnerRes.ok) {
@@ -531,6 +552,7 @@ export const runRoomCode = async (req: Request, res: Response, next: NextFunctio
       exitCode: runnerResult.exitCode,
       durationMs: runnerResult.durationMs,
       timedOut: runnerResult.timedOut,
+      stdin: stdin || undefined,
       runBy,
       runById: req.user.id,
       timestamp: Date.now(),

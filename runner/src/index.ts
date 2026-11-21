@@ -32,6 +32,7 @@ const executeSchema = z
     files: z.array(fileEntrySchema).max(MAX_FILES).optional(),
     entry: z.string().min(1).max(255).optional(),
     code: z.string().optional(),
+    stdin: z.string().max(10 * 1024, 'Stdin input exceeds 10KB limit').optional(),
   })
   .refine(
     (data) => (data.files && data.files.length > 0) || (typeof data.code === 'string' && data.code.length > 0),
@@ -80,7 +81,7 @@ app.post('/execute', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  const { language, files, entry, code } = parseResult.data;
+  const { language, files, entry, code, stdin } = parseResult.data;
 
   // File size and count validations
   if (files && files.length > 0) {
@@ -117,6 +118,7 @@ app.post('/execute', async (req: Request, res: Response): Promise<void> => {
       files,
       entry,
       code,
+      stdin,
     });
 
     res.status(200).json({

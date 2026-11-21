@@ -14,6 +14,7 @@ export interface ExecuteOptions {
   files?: FileEntry[];
   entry?: string;
   code?: string;
+  stdin?: string;
   timeoutMs?: number;
 }
 
@@ -209,15 +210,19 @@ export class DockerExecutor {
         }
       }
 
+      // Write stdin file inside tempDir (empty or provided string)
+      const stdinContent = typeof options.stdin === 'string' ? options.stdin : '';
+      await fs.writeFile(path.join(tempDir, '.stdin'), stdinContent, 'utf-8');
+
       // Generate container runner script (.run.sh) inside tempDir with strict LF line endings
       // This prevents Windows CreateProcess quote escaping and nested sh -c issues
       let runnerScript = '';
       if (options.language === 'python') {
-        runnerScript = `export PYTHONPATH=/sandbox:$PYTHONPATH\ncd /sandbox\ntimeout 5 python3 "${entry}" < /dev/null\n`;
+        runnerScript = `export PYTHONPATH=/sandbox:$PYTHONPATH\ncd /sandbox\ntimeout 5 python3 "${entry}" < /sandbox/.stdin\n`;
       } else if (options.language === 'javascript') {
-        runnerScript = `cd /sandbox\ntimeout 5 node "${entry}" < /dev/null\n`;
+        runnerScript = `cd /sandbox\ntimeout 5 node "${entry}" < /sandbox/.stdin\n`;
       } else if (options.language === 'java') {
-        runnerScript = `SOURCES=$(find /sandbox -type f -name "*.java" 2>/dev/null)\nif [ -z "$SOURCES" ]; then\n  echo "No Java source files found in workspace" >&2\n  exit 1\nfi\ntimeout 15 javac -J-Xmx128m -J-XX:TieredStopAtLevel=1 -d /tmp -cp /sandbox $SOURCES || exit $?\ntimeout 5 java -Xmx128m -XX:TieredStopAtLevel=1 -cp /tmp:/sandbox ${javaEntryClassName} < /dev/null\n`;
+        runnerScript = `SOURCES=$(find /sandbox -type f -name "*.java" 2>/dev/null)\nif [ -z "$SOURCES" ]; then\n  echo "No Java source files found in workspace" >&2\n  exit 1\nfi\ntimeout 15 javac -J-Xmx128m -J-XX:TieredStopAtLevel=1 -d /tmp -cp /sandbox $SOURCES || exit $?\ntimeout 5 java -Xmx128m -XX:TieredStopAtLevel=1 -cp /tmp:/sandbox ${javaEntryClassName} < /sandbox/.stdin\n`;
       } else if (options.language === 'cpp') {
         // Identify all C/C++ source files in the workspace
         const cExtensions = ['.cpp', '.c', '.cc', '.cxx'];
@@ -258,7 +263,7 @@ export class DockerExecutor {
         const isPureC = compileSources.every((s) => s.endsWith('.c'));
         const compiler = isPureC ? 'gcc' : 'g++';
 
-        runnerScript = `timeout 15 ${compiler} -O2 -I/sandbox ${sourceArgs} -o /tmp/main || exit $?\ntimeout 5 /tmp/main < /dev/null\n`;
+        runnerScript = `timeout 15 ${compiler} -O2 -I/sandbox ${sourceArgs} -o /tmp/main || exit $?\ntimeout 5 /tmp/main < /sandbox/.stdin\n`;
       }
 
       await fs.writeFile(path.join(tempDir, '.run.sh'), runnerScript, { encoding: 'utf-8' });

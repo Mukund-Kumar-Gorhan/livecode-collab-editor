@@ -12,7 +12,7 @@ import { useAuthStore } from '../store/authStore';
 import { toast } from '../store/toastStore';
 import { getUserColor } from '../utils/colors';
 import { getLanguageInfo } from '../utils/language';
-import { Terminal, CheckCircle2, Loader2, AlertCircle } from 'lucide-react';
+import { Terminal, CheckCircle2, Loader2, AlertCircle, Keyboard } from 'lucide-react';
 
 export const RoomPage: React.FC = () => {
   const { shortId } = useParams<{ shortId: string }>();
@@ -37,6 +37,8 @@ export const RoomPage: React.FC = () => {
     `[LiveCode Terminal Ready]\nWorkspace initialized for room.\nSelect or create a file, edit code, and click 'Run'.`
   );
   const [isRunning, setIsRunning] = useState<boolean>(false);
+  const [consoleTab, setConsoleTab] = useState<'output' | 'stdin'>('output');
+  const [stdinText, setStdinText] = useState<string>('');
 
   // Yjs: ydoc + provider
   const ydocRef = useRef<Y.Doc | null>(null);
@@ -174,6 +176,17 @@ export const RoomPage: React.FC = () => {
     yrun.observe(handleRunUpdate);
     handleRunUpdate();
 
+    // Observe metadata map changes (stdin synchronization)
+    const metadataMap = ydoc.getMap('metadata');
+    const handleMetadataSync = () => {
+      const syncdStdin = metadataMap.get('stdin');
+      if (typeof syncdStdin === 'string') {
+        setStdinText(syncdStdin);
+      }
+    };
+    metadataMap.observe(handleMetadataSync);
+    handleMetadataSync();
+
     // Observe files map changes (auto-open default file and react to deletions)
     const filesMap = ydoc.getMap('files');
     const handleFilesSync = () => {
@@ -225,6 +238,7 @@ export const RoomPage: React.FC = () => {
       provider.awareness.off('change', handleAwarenessChange);
       filesMap.unobserve(handleFilesSync);
       yrun.unobserve(handleRunUpdate);
+      metadataMap.unobserve(handleMetadataSync);
       provider.destroy();
       ydoc.destroy();
       ydocRef.current = null;
@@ -271,6 +285,15 @@ export const RoomPage: React.FC = () => {
     });
   };
 
+  const handleStdinChange = (newVal: string) => {
+    if (role === 'VIEWER') {
+      toast.error('Viewers cannot edit standard input');
+      return;
+    }
+    setStdinText(newVal);
+    ydocRef.current?.getMap('metadata').set('stdin', newVal);
+  };
+
   const handleRunCode = async () => {
     if (!shortId) return;
     if (role === 'VIEWER') {
@@ -289,8 +312,10 @@ export const RoomPage: React.FC = () => {
     if (isRunning) return;
 
     setIsRunning(true);
+    setConsoleTab('output'); // Auto switch to output tab on run
     try {
-      const res = await roomApi.runCode(shortId, activeFile || undefined);
+      const currentStdin = (ydocRef.current?.getMap('metadata').get('stdin') as string) || stdinText;
+      const res = await roomApi.runCode(shortId, activeFile || undefined, currentStdin);
       if (res?.data) {
         setLatestRun(res.data);
       }
@@ -388,12 +413,38 @@ export const RoomPage: React.FC = () => {
 
           {/* Bottom Output Console Panel */}
           <div className="h-44 bg-app-bg border-t border-app-border flex flex-col shrink-0">
-            <div className="h-7 bg-app-surface px-3 flex items-center justify-between border-b border-app-border text-xs select-none">
-              <div className="flex items-center space-x-2 text-app-text-muted">
-                <Terminal className="w-3.5 h-3.5 text-app-accent" />
-                <span className="font-semibold text-[11px] uppercase tracking-wider text-app-text">
-                  Console Output {activeFile ? `(${activeFile})` : ''}
-                </span>
+            <div className="h-8 bg-app-surface px-3 flex items-center justify-between border-b border-app-border text-xs select-none">
+              <div className="flex items-center space-x-1">
+                {/* Tab: Output */}
+                <button
+                  type="button"
+                  onClick={() => setConsoleTab('output')}
+                  className={`flex items-center space-x-1.5 px-2.5 py-1 rounded text-[11px] font-semibold transition ${
+                    consoleTab === 'output'
+                      ? 'bg-app-bg text-app-text border border-app-border/60 shadow-sm'
+                      : 'text-app-text-muted hover:text-app-text hover:bg-app-bg/50'
+                  }`}
+                >
+                  <Terminal className="w-3.5 h-3.5 text-app-accent" />
+                  <span className="uppercase tracking-wider">Output {activeFile ? `(${activeFile})` : ''}</span>
+                </button>
+
+                {/* Tab: Input (stdin) */}
+                <button
+                  type="button"
+                  onClick={() => setConsoleTab('stdin')}
+                  className={`flex items-center space-x-1.5 px-2.5 py-1 rounded text-[11px] font-semibold transition ${
+                    consoleTab === 'stdin'
+                      ? 'bg-app-bg text-app-text border border-app-border/60 shadow-sm'
+                      : 'text-app-text-muted hover:text-app-text hover:bg-app-bg/50'
+                  }`}
+                >
+                  <Keyboard className="w-3.5 h-3.5 text-sky-400" />
+                  <span className="uppercase tracking-wider">Input (stdin)</span>
+                  {stdinText.trim().length > 0 && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-sky-400 ml-0.5" title="Has stdin input" />
+                  )}
+                </button>
               </div>
 
               {/* Real Runner Health Indicator */}
@@ -420,74 +471,112 @@ export const RoomPage: React.FC = () => {
               )}
             </div>
 
-            {/* Console Content: Observes latestRun from Y.Map("run") */}
-            <div className="flex-1 p-3 font-mono text-xs overflow-y-auto selection:bg-app-accent/30 leading-relaxed text-app-text">
-              {latestRun ? (
-                <div className="flex flex-col space-y-2">
-                  {/* Meta details bar */}
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] pb-1.5 border-b border-app-border text-app-text-muted">
-                    <span className="text-app-accent font-semibold">
-                      Run by {latestRun.runBy}
-                    </span>
-                    <span>•</span>
-                    <span>
-                      Duration: <span className="text-app-text">{latestRun.durationMs}ms</span>
-                    </span>
-                    <span>•</span>
-                    <span>
-                      Exit code:{' '}
-                      <span
-                        className={
-                          latestRun.exitCode === 0
-                            ? 'text-app-success font-semibold'
-                            : 'text-app-danger font-semibold'
-                        }
-                      >
-                        {latestRun.exitCode ?? 'none'}
+            {/* Console Content: Stdin Input Tab OR Output Tab */}
+            {consoleTab === 'stdin' ? (
+              <div className="flex-1 flex flex-col p-2 bg-app-bg overflow-hidden">
+                <div className="flex items-center justify-between pb-1.5 px-1 text-[11px] text-app-text-muted border-b border-app-border/40">
+                  <span>
+                    Provide program input (stdin) fed to <code className="text-app-accent font-mono text-[10px]">scanf / cin / input() / Scanner</code>
+                  </span>
+                  <span className="font-mono text-[10px]">
+                    {new TextEncoder().encode(stdinText).length} / 10240 B {role === 'VIEWER' && '(Read-only for viewers)'}
+                  </span>
+                </div>
+                <textarea
+                  value={stdinText}
+                  onChange={(e) => handleStdinChange(e.target.value)}
+                  readOnly={role === 'VIEWER'}
+                  disabled={role === 'VIEWER'}
+                  placeholder={
+                    role === 'VIEWER'
+                      ? 'Standard input (stdin) is read-only for viewers'
+                      : 'Enter program input (stdin) here...\nEach line will be fed to scanf / cin / input() in order (e.g.\n5\n7)'
+                  }
+                  className="flex-1 w-full bg-transparent resize-none p-2 font-mono text-xs text-app-text placeholder:text-app-text-muted/40 focus:outline-none"
+                  maxLength={10240}
+                  spellCheck={false}
+                />
+              </div>
+            ) : (
+              <div className="flex-1 p-3 font-mono text-xs overflow-y-auto selection:bg-app-accent/30 leading-relaxed text-app-text">
+                {latestRun ? (
+                  <div className="flex flex-col space-y-2">
+                    {/* Meta details bar */}
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] pb-1.5 border-b border-app-border text-app-text-muted">
+                      <span className="text-app-accent font-semibold">
+                        Run by {latestRun.runBy}
                       </span>
-                    </span>
+                      <span>•</span>
+                      <span>
+                        Duration: <span className="text-app-text">{latestRun.durationMs}ms</span>
+                      </span>
+                      <span>•</span>
+                      <span>
+                        Exit code:{' '}
+                        <span
+                          className={
+                            latestRun.exitCode === 0
+                              ? 'text-app-success font-semibold'
+                              : 'text-app-danger font-semibold'
+                          }
+                        >
+                          {latestRun.exitCode ?? 'none'}
+                        </span>
+                      </span>
+                      {latestRun.timedOut && (
+                        <span className="bg-app-warning/20 text-app-warning border border-app-warning/40 px-2 py-0.5 rounded font-semibold text-[10px] animate-pulse">
+                          Time limit exceeded (5s)
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Input used summary (first line) */}
+                    {latestRun.stdin !== undefined && latestRun.stdin.length > 0 && (
+                      <div className="flex items-center space-x-2 text-[11px] text-app-text-muted bg-app-surface/60 px-2 py-1 rounded border border-app-border/40 font-mono">
+                        <span className="text-sky-400 font-semibold">Input used:</span>
+                        <span className="text-app-text truncate max-w-lg">
+                          {latestRun.stdin.split('\n')[0]}
+                          {latestRun.stdin.includes('\n') ? ' ...' : ''}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Explicit timeout notice */}
                     {latestRun.timedOut && (
-                      <span className="bg-app-warning/20 text-app-warning border border-app-warning/40 px-2 py-0.5 rounded font-semibold text-[10px] animate-pulse">
-                        Time limit exceeded (5s)
-                      </span>
+                      <div className="text-app-warning font-semibold text-xs flex items-center space-x-1.5 bg-app-warning/15 p-2 rounded border border-app-warning/30">
+                        <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span>Time limit exceeded: Execution exceeded 5.0 seconds and container was terminated.</span>
+                      </div>
+                    )}
+
+                    {/* Standard Output */}
+                    {latestRun.stdout && (
+                      <div className="text-app-text whitespace-pre-wrap">
+                        {latestRun.stdout}
+                      </div>
+                    )}
+
+                    {/* Standard Error (Red) */}
+                    {latestRun.stderr && (
+                      <div className="text-app-danger whitespace-pre-wrap bg-app-danger/10 p-2 rounded border border-app-danger/25">
+                        {latestRun.stderr}
+                      </div>
+                    )}
+
+                    {/* Empty output notice */}
+                    {!latestRun.stdout && !latestRun.stderr && !latestRun.timedOut && (
+                      <div className="text-app-text-muted italic text-xs">
+                        (Process exited with code {latestRun.exitCode} without producing console output)
+                      </div>
                     )}
                   </div>
-
-                  {/* Explicit timeout notice */}
-                  {latestRun.timedOut && (
-                    <div className="text-app-warning font-semibold text-xs flex items-center space-x-1.5 bg-app-warning/15 p-2 rounded border border-app-warning/30">
-                      <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                      <span>Time limit exceeded: Execution exceeded 5.0 seconds and container was terminated.</span>
-                    </div>
-                  )}
-
-                  {/* Standard Output */}
-                  {latestRun.stdout && (
-                    <div className="text-app-text whitespace-pre-wrap">
-                      {latestRun.stdout}
-                    </div>
-                  )}
-
-                  {/* Standard Error (Red) */}
-                  {latestRun.stderr && (
-                    <div className="text-app-danger whitespace-pre-wrap bg-app-danger/10 p-2 rounded border border-app-danger/25">
-                      {latestRun.stderr}
-                    </div>
-                  )}
-
-                  {/* Empty output notice */}
-                  {!latestRun.stdout && !latestRun.stderr && !latestRun.timedOut && (
-                    <div className="text-app-text-muted italic text-xs">
-                      (Process exited with code {latestRun.exitCode} without producing console output)
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="text-app-text-muted whitespace-pre-wrap">
-                  {consoleOutput}
-                </div>
-              )}
-            </div>
+                ) : (
+                  <div className="text-app-text-muted whitespace-pre-wrap">
+                    {consoleOutput}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

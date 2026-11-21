@@ -179,12 +179,12 @@ export const roomApi = {
     return res.data;
   },
 
-  runCode: async (shortId: string, activeFile?: string) => {
+  runCode: async (shortId: string, activeFile?: string, stdin?: string) => {
     const res = await apiClient.post<{
       success: boolean;
       message: string;
       data: RunResult;
-    }>(`/rooms/${shortId}/run`, { activeFile });
+    }>(`/rooms/${shortId}/run`, { activeFile, stdin });
     return res.data;
   },
 };
