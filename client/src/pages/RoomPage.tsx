@@ -290,7 +290,10 @@ export const RoomPage: React.FC = () => {
 
     setIsRunning(true);
     try {
-      await roomApi.runCode(shortId, activeFile || undefined);
+      const res = await roomApi.runCode(shortId, activeFile || undefined);
+      if (res?.data) {
+        setLatestRun(res.data);
+      }
     } catch (err: any) {
       const msg = err.response?.data?.message || err.message || 'Execution failed';
       toast.error(msg);

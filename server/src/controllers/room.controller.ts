@@ -383,29 +383,6 @@ export const runRoomCode = async (req: Request, res: Response, next: NextFunctio
     let language: string = (metadataMap.get('language') as string) || room.language || 'python';
     let entry: string = (metadataMap.get('entryFile') as string) || '';
 
-    // If activeFile is explicitly provided, validate it exists and is supported
-    if (activeFile && typeof activeFile === 'string') {
-      const fileYText = filesMap.get(activeFile) as any;
-      if (!fileYText || typeof fileYText.toString !== 'function') {
-        throw new ApiError(`Active file "${activeFile}" not found in workspace`, 404, 'FILE_NOT_FOUND');
-      }
-
-      const detected = detectLanguageFromFilename(activeFile);
-      if (!detected) {
-        throw new ApiError(
-          `File "${activeFile}" cannot be executed. Supported execution languages: Python, JavaScript, Java, C++`,
-          400,
-          'UNSUPPORTED_LANGUAGE'
-        );
-      }
-
-      // If no explicit entryFile configured in metadata, use activeFile
-      if (!entry || !filesMap.has(entry)) {
-        entry = activeFile;
-        language = detected;
-      }
-    }
-
     // Prepare files array
     let files: Array<{ path: string; content: string }> = [];
     if (filesMap.size > 0) {
@@ -421,9 +398,44 @@ export const runRoomCode = async (req: Request, res: Response, next: NextFunctio
       entry = defaultFilename;
     }
 
+    // If activeFile is explicitly provided, validate it exists and is supported
+    if (activeFile && typeof activeFile === 'string') {
+      const fileYText = filesMap.get(activeFile) as any;
+      if (!fileYText || typeof fileYText.toString !== 'function') {
+        throw new ApiError(`Active file "${activeFile}" not found in workspace`, 404, 'FILE_NOT_FOUND');
+      }
+
+      const activeLang = detectLanguageFromFilename(activeFile);
+      if (!activeLang) {
+        throw new ApiError(
+          `File "${activeFile}" cannot be executed. Supported execution languages: Python, JavaScript, Java, C++`,
+          400,
+          'UNSUPPORTED_LANGUAGE'
+        );
+      }
+
+      const entryLang = entry && filesMap.has(entry) ? detectLanguageFromFilename(entry) : null;
+
+      // If no valid entryFile, or entryFile language doesn't match activeFile language, use language-appropriate entry
+      if (!entry || !filesMap.has(entry) || entryLang !== activeLang) {
+        const defaultNamesByLang: Record<string, string[]> = {
+          python: ['main.py'],
+          javascript: ['index.js', 'main.js'],
+          java: ['Main.java'],
+          cpp: ['main.cpp', 'main.c'],
+        };
+        const langDefaults = defaultNamesByLang[activeLang] || [];
+        const langEntryMatched = files.find((f) => langDefaults.includes(f.path.split('/').pop() || ''));
+        entry = langEntryMatched ? langEntryMatched.path : activeFile;
+        language = activeLang;
+      } else {
+        language = entryLang;
+      }
+    }
+
     // Auto-detect entry file if still not selected or if configured entry file was deleted
     if (!entry || !files.some((f) => f.path === entry)) {
-      const defaultEntryNames = ['Main.java', 'main.cpp', 'main.py', 'index.js'];
+      const defaultEntryNames = ['Main.java', 'main.cpp', 'main.c', 'main.py', 'index.js'];
       const matched = files.find((f) => defaultEntryNames.includes(f.path.split('/').pop() || ''));
       if (matched) {
         entry = matched.path;

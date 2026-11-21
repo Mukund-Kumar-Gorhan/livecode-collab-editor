@@ -209,7 +209,20 @@ export class DockerExecutor {
         }
       }
 
-      const runArgs = langConfig.getRunArgs(entry, javaEntryClassName);
+      // Generate container runner script (.run.sh) inside tempDir with strict LF line endings
+      // This prevents Windows CreateProcess quote escaping and nested sh -c issues
+      let runnerScript = '';
+      if (options.language === 'python') {
+        runnerScript = `export PYTHONPATH=/sandbox:$PYTHONPATH\ncd /sandbox\ntimeout 5 python3 "${entry}"\n`;
+      } else if (options.language === 'javascript') {
+        runnerScript = `cd /sandbox\ntimeout 5 node "${entry}"\n`;
+      } else if (options.language === 'java') {
+        runnerScript = `SOURCES=$(find /sandbox -type f -name "*.java" 2>/dev/null)\nif [ -z "$SOURCES" ]; then\n  echo "No Java source files found in workspace" >&2\n  exit 1\nfi\ntimeout 15 javac -J-Xmx128m -J-XX:TieredStopAtLevel=1 -d /tmp -cp /sandbox $SOURCES || exit $?\ntimeout 5 java -Xmx128m -XX:TieredStopAtLevel=1 -cp /tmp:/sandbox ${javaEntryClassName}\n`;
+      } else if (options.language === 'cpp') {
+        runnerScript = `SOURCES=$(find /sandbox -type f \\( -name "*.cpp" -o -name "*.c" -o -name "*.cc" -o -name "*.cxx" \\) 2>/dev/null)\nif [ -z "$SOURCES" ]; then\n  echo "No C/C++ source files found in workspace" >&2\n  exit 1\nfi\ntimeout 15 g++ -O2 -I/sandbox $SOURCES -o /tmp/main || exit $?\ntimeout 5 /tmp/main\n`;
+      }
+
+      await fs.writeFile(path.join(tempDir, '.run.sh'), runnerScript, { encoding: 'utf-8' });
 
       // Build docker run command with strict security flags:
       // --network=none --read-only --tmpfs /tmp:exec --cap-drop=ALL --security-opt no-new-privileges --rm
@@ -229,7 +242,7 @@ export class DockerExecutor {
         '--security-opt', 'no-new-privileges',
         '-v', `${tempDir}:/sandbox:ro`,
         langConfig.dockerImage,
-        ...runArgs,
+        'sh', '/sandbox/.run.sh',
       ];
 
       let stdout = '';
