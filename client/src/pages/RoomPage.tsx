@@ -277,19 +277,20 @@ export const RoomPage: React.FC = () => {
       toast.error('Viewers are not permitted to run code');
       return;
     }
-    if (!activeFile) {
-      toast.error('Please open a file to run');
+
+    const filesMap = ydocRef.current?.getMap('files');
+    const hasFiles = filesMap && filesMap.size > 0;
+
+    if (!hasFiles && !activeFile) {
+      toast.error('Please open or upload a file to run');
       return;
     }
-    if (!activeLangInfo.isExecutable) {
-      toast.error(`Execution not supported for ${activeLangInfo.name} files`);
-      return;
-    }
+
     if (isRunning) return;
 
     setIsRunning(true);
     try {
-      await roomApi.runCode(shortId, activeFile);
+      await roomApi.runCode(shortId, activeFile || undefined);
     } catch (err: any) {
       const msg = err.response?.data?.message || err.message || 'Execution failed';
       toast.error(msg);

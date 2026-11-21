@@ -3,7 +3,10 @@ export interface LanguageConfig {
   name: string;
   dockerImage: string;
   fileExtension: string;
-  getRunArgs: (filename: string, className?: string) => string[];
+  isCompiled: boolean;
+  memoryLimit: string;
+  pidsLimit: number;
+  getRunArgs: (entryFile: string, entryClass?: string) => string[];
   defaultTimeoutMs: number;
 }
 
@@ -13,7 +16,14 @@ export const SUPPORTED_LANGUAGES: Record<string, LanguageConfig> = {
     name: 'Python 3.11',
     dockerImage: 'collab-sandbox-python:latest',
     fileExtension: 'py',
-    getRunArgs: (filename: string) => ['python3', `/sandbox/${filename}`],
+    isCompiled: false,
+    memoryLimit: '128m',
+    pidsLimit: 64,
+    getRunArgs: (entryFile: string) => [
+      'sh',
+      '-c',
+      `export PYTHONPATH=/sandbox:$PYTHONPATH && cd /sandbox && timeout 5 python3 "${entryFile}"`,
+    ],
     defaultTimeoutMs: 5000,
   },
   javascript: {
@@ -21,7 +31,14 @@ export const SUPPORTED_LANGUAGES: Record<string, LanguageConfig> = {
     name: 'Node.js 20',
     dockerImage: 'collab-sandbox-node:latest',
     fileExtension: 'js',
-    getRunArgs: (filename: string) => ['node', `/sandbox/${filename}`],
+    isCompiled: false,
+    memoryLimit: '128m',
+    pidsLimit: 64,
+    getRunArgs: (entryFile: string) => [
+      'sh',
+      '-c',
+      `cd /sandbox && timeout 5 node "${entryFile}"`,
+    ],
     defaultTimeoutMs: 5000,
   },
   java: {
@@ -29,23 +46,29 @@ export const SUPPORTED_LANGUAGES: Record<string, LanguageConfig> = {
     name: 'Java 17',
     dockerImage: 'collab-sandbox-java:latest',
     fileExtension: 'java',
-    getRunArgs: (filename: string, className: string = 'Main') => [
+    isCompiled: true,
+    memoryLimit: '384m',
+    pidsLimit: 128,
+    getRunArgs: (_entryFile: string, entryClass: string = 'Main') => [
       'sh',
       '-c',
-      `javac -J-Xmx64m -J-XX:TieredStopAtLevel=1 -d /tmp /sandbox/${filename} && java -Xmx64m -XX:TieredStopAtLevel=1 -cp /tmp ${className}`,
+      `timeout 15 sh -c 'find /sandbox -name "*.java" -type f | xargs javac -J-Xmx128m -J-XX:TieredStopAtLevel=1 -d /tmp -cp /sandbox' && timeout 5 java -Xmx128m -XX:TieredStopAtLevel=1 -cp /tmp:/sandbox ${entryClass}`,
     ],
-    defaultTimeoutMs: 5000,
+    defaultTimeoutMs: 20000,
   },
   cpp: {
     id: 'cpp',
     name: 'C++ (g++ 13)',
     dockerImage: 'collab-sandbox-cpp:latest',
     fileExtension: 'cpp',
-    getRunArgs: (filename: string) => [
+    isCompiled: true,
+    memoryLimit: '128m',
+    pidsLimit: 64,
+    getRunArgs: () => [
       'sh',
       '-c',
-      `g++ -O2 /sandbox/${filename} -o /tmp/main && /tmp/main`,
+      `timeout 15 sh -c 'find /sandbox -name "*.cpp" -type f | xargs g++ -O2 -I/sandbox -o /tmp/main' && timeout 5 /tmp/main`,
     ],
-    defaultTimeoutMs: 5000,
+    defaultTimeoutMs: 20000,
   },
 };

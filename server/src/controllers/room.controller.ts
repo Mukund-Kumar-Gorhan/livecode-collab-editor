@@ -4,7 +4,7 @@ import { prisma } from '../config/prisma.js';
 import { ApiError } from '../utils/errors.js';
 import { generateShortId } from '../utils/nanoid.js';
 import { config } from '../config/index.js';
-import { getOrCreateDoc } from '../sockets/collab.js';
+import { getOrCreateDoc, getDefaultFileName } from '../sockets/collab.js';
 
 const createRoomSchema = z.object({
   name: z.string().min(1, 'Room name is required').max(100),
@@ -375,54 +375,84 @@ export const runRoomCode = async (req: Request, res: Response, next: NextFunctio
       throw new ApiError('Viewers are not permitted to run code', 403, 'FORBIDDEN');
     }
 
-    // Read active file code and language from server Y.Doc
+    // Read files and metadata from server Y.Doc
     const doc = await getOrCreateDoc(shortId, room);
     const filesMap = doc.getMap('files');
+    const metadataMap = doc.getMap('metadata');
 
-    let code = '';
-    let language: string = (doc.getMap('metadata').get('language') as string) || room.language || 'python';
+    let language: string = (metadataMap.get('language') as string) || room.language || 'python';
+    let entry: string = (metadataMap.get('entryFile') as string) || '';
 
+    // If activeFile is explicitly provided, validate it exists and is supported
     if (activeFile && typeof activeFile === 'string') {
       const fileYText = filesMap.get(activeFile) as any;
-      if (fileYText && typeof fileYText.toString === 'function') {
-        code = fileYText.toString();
-        const detected = detectLanguageFromFilename(activeFile);
-        if (!detected) {
-          throw new ApiError(
-            `File "${activeFile}" cannot be executed. Supported execution languages: Python, JavaScript, Java, C++`,
-            400,
-            'UNSUPPORTED_LANGUAGE'
-          );
-        }
-        language = detected;
-      } else {
+      if (!fileYText || typeof fileYText.toString !== 'function') {
         throw new ApiError(`Active file "${activeFile}" not found in workspace`, 404, 'FILE_NOT_FOUND');
       }
-    } else {
-      // Fallback: pick primary file from filesMap or fallback to monaco text
-      if (filesMap.size > 0) {
-        const keys = Array.from(filesMap.keys());
-        const defaultKey = keys.find((k) =>
-          ['main.py', 'index.js', 'Main.java', 'main.cpp'].includes(k)
-        ) || keys[0];
-        const fileYText = filesMap.get(defaultKey) as any;
-        if (fileYText && typeof fileYText.toString === 'function') {
-          code = fileYText.toString();
-          const detected = detectLanguageFromFilename(defaultKey);
-          if (detected) language = detected;
-        }
-      } else {
-        code = doc.getText('monaco').toString();
+
+      const detected = detectLanguageFromFilename(activeFile);
+      if (!detected) {
+        throw new ApiError(
+          `File "${activeFile}" cannot be executed. Supported execution languages: Python, JavaScript, Java, C++`,
+          400,
+          'UNSUPPORTED_LANGUAGE'
+        );
       }
+
+      // If no explicit entryFile configured in metadata, use activeFile
+      if (!entry || !filesMap.has(entry)) {
+        entry = activeFile;
+        language = detected;
+      }
+    }
+
+    // Prepare files array
+    let files: Array<{ path: string; content: string }> = [];
+    if (filesMap.size > 0) {
+      files = Array.from(filesMap.entries()).map(([filePath, ytext]) => ({
+        path: filePath,
+        content: ytext && typeof (ytext as any).toString === 'function' ? (ytext as any).toString() : '',
+      }));
+    } else {
+      // Fallback: legacy single-file
+      const legacyCode = doc.getText('monaco').toString();
+      const defaultFilename = getDefaultFileName(room.language);
+      files = [{ path: defaultFilename, content: legacyCode }];
+      entry = defaultFilename;
+    }
+
+    // Auto-detect entry file if still not selected or if configured entry file was deleted
+    if (!entry || !files.some((f) => f.path === entry)) {
+      const defaultEntryNames = ['Main.java', 'main.cpp', 'main.py', 'index.js'];
+      const matched = files.find((f) => defaultEntryNames.includes(f.path.split('/').pop() || ''));
+      if (matched) {
+        entry = matched.path;
+      } else if (activeFile && files.some((f) => f.path === activeFile)) {
+        entry = activeFile;
+      } else {
+        // Find first executable file
+        const firstExec = files.find((f) => detectLanguageFromFilename(f.path) !== null);
+        entry = firstExec ? firstExec.path : files[0].path;
+      }
+    }
+
+    // Detect language from entry file
+    const detectedEntryLang = detectLanguageFromFilename(entry);
+    if (detectedEntryLang) {
+      language = detectedEntryLang;
     }
 
     if (!['python', 'javascript', 'java', 'cpp'].includes(language)) {
       throw new ApiError(
-        `Language for file "${activeFile || 'file'}" is not supported for execution. Supported languages: Python, JavaScript, Java, C++`,
+        `Language for file "${entry || 'file'}" is not supported for execution. Supported languages: Python, JavaScript, Java, C++`,
         400,
         'UNSUPPORTED_LANGUAGE'
       );
     }
+
+    // Primary entry code for backwards compatibility
+    const entryFileObj = files.find((f) => f.path === entry);
+    const code = entryFileObj ? entryFileObj.content : '';
 
     // Dispatch execution to Runner service
     let runnerResult: {
@@ -436,8 +466,11 @@ export const runRoomCode = async (req: Request, res: Response, next: NextFunctio
     try {
       const runnerRes = await fetch(`${config.runnerUrl}/execute`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ language, code }),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-runner-secret': config.runnerSecret,
+        },
+        body: JSON.stringify({ language, files, entry, code }),
       });
 
       if (!runnerRes.ok) {
