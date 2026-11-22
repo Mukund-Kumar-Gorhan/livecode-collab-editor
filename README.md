@@ -1,31 +1,48 @@
 # LiveCode: Real-Time Collaborative Code Editor
 
-Multiple users ek hi room me ek saath code likhte hain (Google Docs jaisa),
-aur code Docker sandbox me safely run hota hai.
+Write and run code together in real time. Multiple users edit the same project
+at once (like Google Docs), and the code runs safely inside Docker sandboxes.
 
 ![LiveCode](docs/screenshot.png)
 
 ## Features
 
-- JWT auth (access + refresh token), Owner / Editor / Viewer roles
+**Collaboration**
 - Real-time editing with Yjs (CRDT): live cursors, user names, conflict-free merge
-- Docker sandbox execution: Python, JavaScript, Java, C, C++
-- Multi-file workspace: file explorer, tabs, folder upload, ZIP download, entry file
-- stdin input box, output shared with every user in the room
-- 5 themes and an editable profile
-- Document persistence in PostgreSQL (code survives restarts)
+- Rooms with invite link and Owner / Editor / Viewer roles
+- Members panel: the owner can change roles or remove members, and the change
+  applies live without a page reload
+- Online/offline status for every member
+- Code is saved in PostgreSQL, so it survives server restarts
+
+**Workspace**
+- Multi-file projects: file explorer, tabs, create / rename / delete
+- Folder and file upload (drag and drop), download project as ZIP
+- Entry file selection ("Set as entry")
+- Monaco editor (the editor behind VS Code)
+
+**Code execution**
+- Python, JavaScript, Java, C and C++
+- Runs inside an isolated Docker container for every run
+- stdin input box (works with `scanf`, `cin`, `input()`, `Scanner`)
+- Output is shared with every user in the room
+
+**Accounts and UI**
+- JWT auth (access + refresh token), editable profile
+- 5 themes: Midnight, Light, Dracula, One Dark, Cyberpunk
+- Responsive layout that works on phones
 
 ## Architecture
 
 ```
-React + Monaco (client)
-        |  HTTP + WebSocket
+React + Monaco (client, :5173)
+        |  HTTP + WebSocket (Vite proxy)
         v
-Express + Yjs server  --->  PostgreSQL
+Express + Yjs server (:5000)  --->  PostgreSQL
         |
-        |  (shared secret header)
+        |  shared secret header
         v
-Runner service  --->  Docker sandbox container (per run)
+Runner service (:4000)  --->  Docker sandbox container (one per run)
 ```
 
 ## How it works
@@ -37,35 +54,54 @@ Runner service  --->  Docker sandbox container (per run)
    room document (it never trusts code sent by the browser) and asks the runner
    to execute it.
 4. The runner starts a fresh Docker container, runs the code, kills it on
-   timeout, and returns the output. The result is written into the room
-   document, so every user sees it at the same time.
+   timeout and returns the output. The result is written into the room document,
+   so every user sees it at the same time.
 
 ## Security
 
-- Sandbox container: no network, read-only filesystem, 128 MB RAM (Java 384 MB),
-  0.5 CPU, limited processes, non-root user, all capabilities dropped,
-  5 second run timeout
-- Runner accepts requests only with a shared secret header
-- Role checks are enforced on the server (a Viewer's edits are rejected on the
-  WebSocket, not only disabled in the UI)
-- Rate limiting, Zod input validation, path traversal checks on uploads
+- Sandbox container: no network, read-only filesystem, memory and CPU limits,
+  limited process count, non-root user, all capabilities dropped, 5 second run
+  timeout (compile steps get a longer limit)
+- The runner accepts requests only with a shared secret header
+- Roles are enforced on the server: a Viewer's edits are rejected on the
+  WebSocket, not only disabled in the UI
+- Rate limiting on runs, Zod input validation, path traversal checks on
+  uploads and runs
+- Optional invite code for registration (`REGISTRATION_CODE`)
 
 ## Setup
 
-Requirements: Node 20+, Docker Desktop
+Requirements: Node.js 20+, Docker Desktop
 
 ```bash
+# 1. Install dependencies
 npm install
-copy .env.example .env        # Windows (use cp on Mac/Linux)
+
+# 2. Create environment files
+copy .env.example .env          # Windows (use cp on Mac/Linux)
+copy .env server\.env           # server reads its own .env too
+
+# 3. Start PostgreSQL and Redis
 docker compose up -d
+
+# 4. Build sandbox images (first time only, takes a few minutes)
 npm run sandbox:build
-cd server && npx prisma migrate dev && cd ..
+
+# 5. Create database tables
+cd server
+npx prisma migrate dev
+cd ..
+
+# 6. Start client, server and runner
 npm run dev
 ```
 
-Open http://localhost:5173 and use `localhost` (not an IP address).
+Open http://localhost:5173 (use `localhost`, not an IP address).
 
-Run tests:
+`RUNNER_SECRET` must be the same in every `.env` file. Change `JWT_SECRET` and
+`RUNNER_SECRET` from their default values before sharing the app with anyone.
+
+Run the tests:
 
 ```bash
 npx vitest run
@@ -73,56 +109,62 @@ npx vitest run
 
 ## Share publicly with Cloudflare Tunnel
 
-LiveCode is designed so that the **entire application runs through a single public HTTPS URL** by tunneling only the client dev server (port 5173). The backend API (5000) and Runner service (4000) remain private and unexposed.
+The app runs on your own machine. A quick tunnel gives it a temporary public
+https link, which is enough for a demo.
 
-### 1. Start the services
-
-```bash
-npm run dev
-```
-
-### 2. Start Cloudflare Tunnel for client port 5173
-
-Install [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/get-started/create-local-tunnel/) and run:
+1. Install cloudflared: `winget install Cloudflare.cloudflared`
+2. Start the app (`docker compose up -d` and `npm run dev`)
+3. In a new terminal run:
 
 ```bash
 cloudflared tunnel --url http://localhost:5173
 ```
 
-This generates a temporary public HTTPS URL (e.g., `https://random-words.trycloudflare.com`).
+4. Open the `https://....trycloudflare.com` link it prints. Everyone should use
+   this same link.
 
-### 3. How it works behind the scenes
+Notes:
+- Only port 5173 is tunnelled. The runner (4000) and database (5432) stay private.
+- The link changes every time and stops when you close the tunnel (`Ctrl + C`).
+- Anyone with the link can run code on your machine. Set `REGISTRATION_CODE`
+  in `.env` and share the link only with people you trust.
 
-- **Single Entry Point**: Only port 5173 is exposed via the tunnel.
-- **Reverse Proxy**: Vite dev server proxies `/api` to `http://localhost:5000` and `/collab` (WebSockets) to `ws://localhost:5000` (`ws: true`).
-- **Dynamic WebSocket Connection**: The client dynamically connects using `wss://<tunnel-host>/collab` on HTTPS, without any localhost hardcoding.
-- **Same-Origin Cookies**: Refresh token cookies use `SameSite: 'lax'` and dynamically set `Secure` when forwarded over HTTPS (`x-forwarded-proto`), allowing seamless authentication without cross-origin issues or CORS origin additions.
-- **Runner Security**: Runner port 4000 is never exposed publicly. Runner health is proxied exclusively via the server (`/api/runner/health`).
-- **Invite Code Protection (Optional)**: Set `REGISTRATION_CODE=your_invite_code` in `.env` to require an invite code for new registrations. If left empty, registration remains open.
+## Project structure
 
-## Tech Stack
+```
+client/     React + TypeScript + Vite + Tailwind + Monaco
+server/     Express, Yjs WebSocket server, Prisma, auth, rooms
+runner/     Code execution service (Docker)
+docker/     Sandbox Dockerfiles for each language
+docs/       Architecture notes and screenshots
+```
+
+## Tech stack
 
 React, TypeScript, Vite, Tailwind CSS, Monaco Editor, Yjs, Node.js, Express,
 Prisma, PostgreSQL, Docker, Vitest
 
 ## Known limitations
 
-- Docker sandbox is not production-grade isolation; real platforms use gVisor
-  or Firecracker
+- Docker is not production-grade isolation for untrusted code; real platforms
+  use gVisor or Firecracker
 - Program input must be written in the Input box before pressing Run
-  (no interactive terminal yet)
-- Runs on localhost; not deployed publicly
+  (there is no interactive terminal yet)
+- C files are currently compiled with the C++ toolchain (g++)
+- Runs from a single machine, not deployed to a cloud server
 
 ## Roadmap
 
-- [x] Auth and rooms
+- [x] Auth, rooms and roles
 - [x] Yjs real-time sync
 - [x] Docker sandbox execution
-- [x] Multi-file workspace and folder upload
-- [x] Themes and profile
-- [ ] Members panel (change roles live)
+- [x] Multi-file workspace, folder upload, ZIP download
+- [x] stdin input and multi-file runs
+- [x] Themes, profile and mobile layout
+- [x] Members panel with live role changes
+- [x] Public sharing via Cloudflare Tunnel
 - [ ] Interactive terminal
-- [ ] More languages (TypeScript, Go)
+- [ ] Native gcc for C, more languages (TypeScript, Go)
 - [ ] Redis for horizontal scaling
 - [ ] Chat and version history
 
