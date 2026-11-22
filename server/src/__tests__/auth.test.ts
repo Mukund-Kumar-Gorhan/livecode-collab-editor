@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
 import { app } from '../app.js';
 import { prisma } from '../config/prisma.js';
+import { config } from '../config/index.js';
 import { generateAccessToken, generateRefreshToken } from '../utils/jwt.js';
 
 vi.mock('../config/prisma.js', () => {
@@ -91,6 +92,58 @@ describe('Auth API Routes', () => {
       expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);
       expect(res.body.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('should reject registration when REGISTRATION_CODE is set and code is missing or wrong', async () => {
+      const originalCode = config.registrationCode;
+      config.registrationCode = 'INVITE_SECRET_2026';
+
+      try {
+        // Missing code
+        const resMissing = await request(app)
+          .post('/api/auth/register')
+          .send({
+            name: 'New Dev',
+            email: 'newdev@example.com',
+            password: 'password123',
+          });
+        expect(resMissing.status).toBe(403);
+        expect(resMissing.body.code).toBe('INVALID_INVITE_CODE');
+
+        // Wrong code
+        const resWrong = await request(app)
+          .post('/api/auth/register')
+          .send({
+            name: 'New Dev',
+            email: 'newdev@example.com',
+            password: 'password123',
+            inviteCode: 'WRONG_CODE',
+          });
+        expect(resWrong.status).toBe(403);
+        expect(resWrong.body.code).toBe('INVALID_INVITE_CODE');
+
+        // Correct code
+        vi.mocked(prisma.user.findUnique).mockResolvedValueOnce(null);
+        vi.mocked(prisma.user.create).mockResolvedValueOnce({
+          id: 'user-with-invite',
+          name: 'New Dev',
+          email: 'newdev@example.com',
+          createdAt: new Date(),
+        } as any);
+
+        const resSuccess = await request(app)
+          .post('/api/auth/register')
+          .send({
+            name: 'New Dev',
+            email: 'newdev@example.com',
+            password: 'password123',
+            inviteCode: 'INVITE_SECRET_2026',
+          });
+        expect(resSuccess.status).toBe(201);
+        expect(resSuccess.body.success).toBe(true);
+      } finally {
+        config.registrationCode = originalCode;
+      }
     });
   });
 
@@ -198,6 +251,100 @@ describe('Auth API Routes', () => {
       expect(res.status).toBe(401);
       expect(res.body.success).toBe(false);
       expect(res.body.code).toBe('UNAUTHORIZED');
+    });
+  });
+
+  describe('GET /api/auth/config', () => {
+    it('should report inviteCodeRequired false when REGISTRATION_CODE is unset', async () => {
+      const originalCode = config.registrationCode;
+      config.registrationCode = '';
+      try {
+        const res = await request(app).get('/api/auth/config');
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data.inviteCodeRequired).toBe(false);
+      } finally {
+        config.registrationCode = originalCode;
+      }
+    });
+
+    it('should report inviteCodeRequired true when REGISTRATION_CODE is configured', async () => {
+      const originalCode = config.registrationCode;
+      config.registrationCode = 'VIP_ONLY_2026';
+      try {
+        const res = await request(app).get('/api/auth/config');
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data.inviteCodeRequired).toBe(true);
+      } finally {
+        config.registrationCode = originalCode;
+      }
+    });
+  });
+
+  describe('Cookie Security & HTTPS Proxy Forwarding', () => {
+    it('should set Secure cookie attribute when x-forwarded-proto is https', async () => {
+      const passwordHash = await bcrypt.hash('secretPass123', 10);
+      vi.mocked(prisma.user.findUnique).mockResolvedValueOnce({
+        id: 'user-https-1',
+        email: 'https@example.com',
+        name: 'Https User',
+        passwordHash,
+      } as any);
+      vi.mocked(prisma.user.update).mockResolvedValueOnce({} as any);
+
+      const res = await request(app)
+        .post('/api/auth/login')
+        .set('x-forwarded-proto', 'https')
+        .send({
+          email: 'https@example.com',
+          password: 'secretPass123',
+        });
+
+      expect(res.status).toBe(200);
+      const cookies = res.headers['set-cookie'];
+      const cookieArr = Array.isArray(cookies) ? cookies : [cookies];
+      expect(cookieArr.some((c) => typeof c === 'string' && c.includes('Secure'))).toBe(true);
+      expect(cookieArr.some((c) => typeof c === 'string' && c.includes('SameSite=Lax'))).toBe(true);
+    });
+  });
+
+  describe('GET /api/runner/health (Runner Proxy)', () => {
+    it('should proxy runner health without exposing internal port 4000', async () => {
+      const originalFetch = globalThis.fetch;
+      try {
+        // Mock internal runner responding ok
+        globalThis.fetch = vi.fn().mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            status: 'ok',
+            service: 'collab-editor-runner',
+            supportedLanguages: ['python', 'javascript'],
+            queue: { activeJobs: 0, queuedJobs: 0, maxConcurrency: 3 },
+          }),
+        } as any);
+
+        const res = await request(app).get('/api/runner/health');
+        expect(res.status).toBe(200);
+        expect(res.body.service).toBe('collab-editor-runner');
+        expect(res.body.queue.maxConcurrency).toBe(3);
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    it('should return 503 when runner service is unavailable', async () => {
+      const originalFetch = globalThis.fetch;
+      try {
+        globalThis.fetch = vi.fn().mockRejectedValueOnce(new Error('Connection refused'));
+
+        const res = await request(app).get('/api/runner/health');
+        expect(res.status).toBe(503);
+        expect(res.body.status).toBe('unavailable');
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
     });
   });
 });

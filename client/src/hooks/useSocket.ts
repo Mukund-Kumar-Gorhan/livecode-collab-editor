@@ -5,11 +5,17 @@ export interface UseSocketOptions {
   onMessage?: (data: unknown) => void;
 }
 
+const getDefaultWsUrl = () => {
+  if (typeof window === 'undefined') return 'ws://localhost:5000/ws';
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}/ws`;
+};
+
 /**
  * Custom hook for managing raw WebSocket connection or Yjs provider status.
  */
 export const useSocket = (options: UseSocketOptions = {}) => {
-  const { url = 'ws://localhost:5000/ws', onMessage } = options;
+  const { url = getDefaultWsUrl(), onMessage } = options;
   const [isConnected, setIsConnected] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
 

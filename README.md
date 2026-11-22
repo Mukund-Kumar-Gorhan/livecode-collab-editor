@@ -71,6 +71,35 @@ Run tests:
 npx vitest run
 ```
 
+## Share publicly with Cloudflare Tunnel
+
+LiveCode is designed so that the **entire application runs through a single public HTTPS URL** by tunneling only the client dev server (port 5173). The backend API (5000) and Runner service (4000) remain private and unexposed.
+
+### 1. Start the services
+
+```bash
+npm run dev
+```
+
+### 2. Start Cloudflare Tunnel for client port 5173
+
+Install [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/get-started/create-local-tunnel/) and run:
+
+```bash
+cloudflared tunnel --url http://localhost:5173
+```
+
+This generates a temporary public HTTPS URL (e.g., `https://random-words.trycloudflare.com`).
+
+### 3. How it works behind the scenes
+
+- **Single Entry Point**: Only port 5173 is exposed via the tunnel.
+- **Reverse Proxy**: Vite dev server proxies `/api` to `http://localhost:5000` and `/collab` (WebSockets) to `ws://localhost:5000` (`ws: true`).
+- **Dynamic WebSocket Connection**: The client dynamically connects using `wss://<tunnel-host>/collab` on HTTPS, without any localhost hardcoding.
+- **Same-Origin Cookies**: Refresh token cookies use `SameSite: 'lax'` and dynamically set `Secure` when forwarded over HTTPS (`x-forwarded-proto`), allowing seamless authentication without cross-origin issues or CORS origin additions.
+- **Runner Security**: Runner port 4000 is never exposed publicly. Runner health is proxied exclusively via the server (`/api/runner/health`).
+- **Invite Code Protection (Optional)**: Set `REGISTRATION_CODE=your_invite_code` in `.env` to require an invite code for new registrations. If left empty, registration remains open.
+
 ## Tech Stack
 
 React, TypeScript, Vite, Tailwind CSS, Monaco Editor, Yjs, Node.js, Express,

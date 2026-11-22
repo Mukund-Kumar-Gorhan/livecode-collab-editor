@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../config/prisma.js';
+import { config } from '../config/index.js';
 import { ApiError } from '../utils/errors.js';
 import {
   generateAccessToken,
@@ -13,6 +14,7 @@ const registerSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100),
   email: z.string().email('Valid email is required').toLowerCase(),
   password: z.string().min(6, 'Password must be at least 6 characters'),
+  inviteCode: z.string().optional(),
 });
 
 const loginSchema = z.object({
@@ -22,6 +24,22 @@ const loginSchema = z.object({
 
 const REFRESH_COOKIE_NAME = 'refreshToken';
 const REFRESH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+const isSecureRequest = (req: Request): boolean => {
+  return (
+    process.env.NODE_ENV === 'production' ||
+    req.secure ||
+    req.headers['x-forwarded-proto'] === 'https'
+  );
+};
+
+const getRefreshCookieOptions = (req: Request) => ({
+  httpOnly: true,
+  secure: isSecureRequest(req),
+  sameSite: 'lax' as const,
+  maxAge: REFRESH_COOKIE_MAX_AGE,
+  path: '/',
+});
 
 const SAFE_AUTH_USER_SELECT = {
   id: true,
@@ -40,6 +58,14 @@ const SAFE_AUTH_USER_SELECT = {
 export const register = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const validatedData = registerSchema.parse(req.body);
+
+    const configuredCode = (config.registrationCode || '').trim();
+    if (configuredCode) {
+      const providedCode = (validatedData.inviteCode || '').trim();
+      if (!providedCode || providedCode !== configuredCode) {
+        throw new ApiError('Invalid or missing invite code', 403, 'INVALID_INVITE_CODE');
+      }
+    }
 
     const existingUser = await prisma.user.findUnique({
       where: { email: validatedData.email },
@@ -97,13 +123,7 @@ export const login = async (req: Request, res: Response, next: NextFunction): Pr
       data: { refreshToken },
     });
 
-    res.cookie(REFRESH_COOKIE_NAME, refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: REFRESH_COOKIE_MAX_AGE,
-      path: '/',
-    });
+    res.cookie(REFRESH_COOKIE_NAME, refreshToken, getRefreshCookieOptions(req));
 
     res.status(200).json({
       success: true,
@@ -161,13 +181,7 @@ export const refreshToken = async (req: Request, res: Response, next: NextFuncti
       data: { refreshToken: newRefreshToken },
     });
 
-    res.cookie(REFRESH_COOKIE_NAME, newRefreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: REFRESH_COOKIE_MAX_AGE,
-      path: '/',
-    });
+    res.cookie(REFRESH_COOKIE_NAME, newRefreshToken, getRefreshCookieOptions(req));
 
     res.status(200).json({
       success: true,
@@ -211,7 +225,7 @@ export const logout = async (req: Request, res: Response, next: NextFunction): P
 
     res.clearCookie(REFRESH_COOKIE_NAME, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isSecureRequest(req),
       sameSite: 'lax',
       path: '/',
     });
@@ -219,6 +233,20 @@ export const logout = async (req: Request, res: Response, next: NextFunction): P
     res.status(200).json({
       success: true,
       message: 'Logged out successfully',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getAuthConfig = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const configuredCode = (config.registrationCode || '').trim();
+    res.status(200).json({
+      success: true,
+      data: {
+        inviteCodeRequired: Boolean(configuredCode),
+      },
     });
   } catch (error) {
     next(error);

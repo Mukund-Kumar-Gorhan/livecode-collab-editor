@@ -9,7 +9,7 @@ interface AuthState {
   isLoading: boolean;
   isInitialized: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string, inviteCode?: string) => Promise<void>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
   setAccessToken: (token: string | null) => void;
@@ -61,10 +61,10 @@ export const useAuthStore = create<AuthState>((set, get) => {
       }
     },
 
-    register: async (name: string, email: string, password: string) => {
+    register: async (name: string, email: string, password: string, inviteCode?: string) => {
       set({ isLoading: true });
       try {
-        await authApi.register({ name, email, password });
+        await authApi.register({ name, email, password, inviteCode });
         // Automatically login after successful registration
         const loginResponse = await authApi.login({ email, password });
         const loggedUser = loginResponse.data.user;

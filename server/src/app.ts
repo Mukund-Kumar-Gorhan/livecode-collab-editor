@@ -11,6 +11,9 @@ import path from 'path';
 
 export const app = express();
 
+// Trust reverse proxy (Vite dev server proxy, Cloudflare tunnel, etc.)
+app.set('trust proxy', 1);
+
 // Security and utility middleware
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
@@ -38,6 +41,36 @@ app.get('/health', (req, res) => {
     environment: config.env,
   });
 });
+
+// Runner Health Proxy (Runner is never directly exposed to the public internet)
+const runnerHealthHandler = async (_req: express.Request, res: express.Response) => {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3500);
+    const runnerRes = await fetch(`${config.runnerUrl}/health`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (!runnerRes.ok) {
+      return res.status(runnerRes.status).json({
+        status: 'error',
+        message: 'Runner returned non-ok status',
+      });
+    }
+
+    const data = await runnerRes.json();
+    return res.status(200).json(data);
+  } catch (error: any) {
+    return res.status(503).json({
+      status: 'unavailable',
+      message: error?.message || 'Runner service unreachable',
+    });
+  }
+};
+
+app.get('/api/runner/health', runnerHealthHandler);
+app.get('/health/runner', runnerHealthHandler);
 
 // API Routes
 app.use('/api/auth', authRouter);

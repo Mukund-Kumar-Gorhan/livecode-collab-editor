@@ -1,7 +1,7 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { Room, RoomRole, SupportedLanguage, User, RunResult } from '../types';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -92,7 +92,15 @@ apiClient.interceptors.response.use(
 
 // Auth endpoints
 export const authApi = {
-  register: async (payload: { name: string; email: string; password: string }) => {
+  getConfig: async () => {
+    const res = await apiClient.get<{
+      success: boolean;
+      data: { inviteCodeRequired: boolean };
+    }>('/auth/config');
+    return res.data;
+  },
+
+  register: async (payload: { name: string; email: string; password: string; inviteCode?: string }) => {
     const res = await apiClient.post<{ success: boolean; message: string; data: { user: User } }>(
       '/auth/register',
       payload
@@ -251,16 +259,15 @@ export const userApi = {
   },
 };
 
-// Runner service API
+// Runner service API (queried exclusively through server endpoint)
 export const runnerApi = {
   checkHealth: async () => {
-    const runnerUrl = import.meta.env.VITE_RUNNER_URL || 'http://localhost:4000';
-    const res = await axios.get<{
+    const res = await apiClient.get<{
       status: string;
       service: string;
       supportedLanguages: string[];
       queue: { activeJobs: number; queuedJobs: number; maxConcurrency: number };
-    }>(`${runnerUrl}/health`, { timeout: 3000 });
+    }>('/runner/health', { timeout: 4000 });
     return res.data;
   },
 };

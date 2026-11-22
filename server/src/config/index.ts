@@ -19,6 +19,7 @@ export interface AppConfig {
   jwtRefreshExpiresIn: string;
   runnerUrl: string;
   runnerSecret: string;
+  registrationCode?: string;
 }
 
 export const config: AppConfig = {
@@ -28,6 +29,7 @@ export const config: AppConfig = {
   clientOrigin: process.env.CLIENT_ORIGIN || 'http://localhost:5173',
   runnerUrl: process.env.RUNNER_URL || 'http://localhost:4000',
   runnerSecret: process.env.RUNNER_SECRET || 'dev_runner_secret_key_change_me_in_production',
+  registrationCode: process.env.REGISTRATION_CODE || '',
   databaseUrl: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/collab_editor?schema=public',
   redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',
   jwtSecret: process.env.JWT_SECRET || 'dev_jwt_secret_key_change_me',

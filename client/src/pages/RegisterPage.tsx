@@ -1,22 +1,42 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { toast } from '../store/toastStore';
-import { Code2, ArrowRight, Lock, Mail, User, Sparkles, Cpu, Terminal, Users } from 'lucide-react';
+import { Code2, ArrowRight, Lock, Mail, User, Sparkles, Cpu, Terminal, Users, Key } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { ThemeSwitcher } from '../components/ThemeSwitcher';
+import { authApi } from '../services/api';
 
 export const RegisterPage: React.FC = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
+  const [requireInviteCode, setRequireInviteCode] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   const { register } = useAuthStore();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    let isMounted = true;
+    authApi
+      .getConfig()
+      .then((res) => {
+        if (isMounted && res.data?.inviteCodeRequired) {
+          setRequireInviteCode(true);
+        }
+      })
+      .catch(() => {
+        // Fallback: registration without code if config fails
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const getPasswordStrength = (pwd: string) => {
     if (!pwd) return { label: '', score: 0, color: 'bg-app-border' };
@@ -65,9 +85,14 @@ export const RegisterPage: React.FC = () => {
       return;
     }
 
+    if (requireInviteCode && !inviteCode.trim()) {
+      setErrorMsg('Invite code is required.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      await register(name.trim(), email.trim(), password);
+      await register(name.trim(), email.trim(), password, inviteCode.trim() || undefined);
       toast.success('Account created successfully! Welcome to LiveCode.');
       navigate('/dashboard', { replace: true });
     } catch (err: any) {
@@ -220,6 +245,18 @@ export const RegisterPage: React.FC = () => {
               placeholder="Repeat password"
               leftIcon={<Lock className="w-4 h-4" />}
             />
+
+            {requireInviteCode && (
+              <Input
+                label="Invite Code"
+                type="text"
+                required
+                value={inviteCode}
+                onChange={(e) => setInviteCode(e.target.value)}
+                placeholder="Enter invite code"
+                leftIcon={<Key className="w-4 h-4" />}
+              />
+            )}
 
             <Button
               type="submit"

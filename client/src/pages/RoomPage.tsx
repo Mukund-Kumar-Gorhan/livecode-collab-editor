@@ -114,10 +114,9 @@ export const RoomPage: React.FC = () => {
     const ydoc = new Y.Doc();
     ydocRef.current = ydoc;
 
-    // Build WebSocket server URL
+    // Build WebSocket server URL (always from window.location)
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsHost = window.location.hostname === 'localhost' ? 'localhost:5000' : window.location.host;
-    const serverUrl = `${wsProtocol}//${wsHost}/collab`;
+    const serverUrl = `${wsProtocol}//${window.location.host}/collab`;
 
     const provider = new WebsocketProvider(serverUrl, shortId, ydoc, {
       params: { token: token || '' },
@@ -575,7 +574,7 @@ export const RoomPage: React.FC = () => {
               {runnerStatus === 'disconnected' && (
                 <div
                   className="flex items-center space-x-1.5 text-app-danger text-[11px]"
-                  title="Runner service unreachable at http://localhost:4000"
+                  title="Runner service unreachable"
                 >
                   <AlertCircle className="w-3 h-3" />
                   <span>Runner: Offline</span>
