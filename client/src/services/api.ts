@@ -174,6 +174,13 @@ export const roomApi = {
     return res.data;
   },
 
+  removeMember: async (shortId: string, userId: string) => {
+    const res = await apiClient.delete<{ success: boolean; message: string }>(
+      `/rooms/${shortId}/members/${userId}`
+    );
+    return res.data;
+  },
+
   deleteRoom: async (shortId: string) => {
     const res = await apiClient.delete<{ success: boolean; message: string }>(`/rooms/${shortId}`);
     return res.data;

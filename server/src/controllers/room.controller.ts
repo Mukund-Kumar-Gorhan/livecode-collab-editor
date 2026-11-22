@@ -4,7 +4,7 @@ import { prisma } from '../config/prisma.js';
 import { ApiError } from '../utils/errors.js';
 import { generateShortId } from '../utils/nanoid.js';
 import { config } from '../config/index.js';
-import { getOrCreateDoc, getDefaultFileName } from '../sockets/collab.js';
+import { getOrCreateDoc, getDefaultFileName, updateMemberRoleInCollab, kickMemberFromCollab } from '../sockets/collab.js';
 
 const createRoomSchema = z.object({
   name: z.string().min(1, 'Room name is required').max(100),
@@ -263,12 +263,73 @@ export const updateMemberRole = async (req: Request, res: Response, next: NextFu
       },
     });
 
+    // Enforce role change live in Yjs session and active WebSocket metadata
+    updateMemberRoleInCollab(shortId, userId, validated.role);
+
     res.status(200).json({
       success: true,
       message: 'Member role updated successfully',
       data: {
         member: updatedMember,
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const removeMember = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (!req.user) {
+      throw new ApiError('Unauthorized', 401, 'UNAUTHORIZED');
+    }
+
+    const { shortId, userId } = req.params;
+
+    const room = await prisma.room.findUnique({
+      where: { shortId },
+    });
+
+    if (!room) {
+      throw new ApiError('Room not found', 404, 'ROOM_NOT_FOUND');
+    }
+
+    if (room.ownerId !== req.user.id) {
+      throw new ApiError('Only room owner can remove members', 403, 'FORBIDDEN');
+    }
+
+    if (userId === room.ownerId) {
+      throw new ApiError('Cannot remove the room owner', 400, 'CANNOT_REMOVE_OWNER');
+    }
+
+    const targetMember = await prisma.roomMember.findUnique({
+      where: {
+        roomId_userId: {
+          roomId: room.id,
+          userId,
+        },
+      },
+    });
+
+    if (!targetMember) {
+      throw new ApiError('Member not found in room', 404, 'MEMBER_NOT_FOUND');
+    }
+
+    await prisma.roomMember.delete({
+      where: {
+        roomId_userId: {
+          roomId: room.id,
+          userId,
+        },
+      },
+    });
+
+    // Kick member from active collab session (close sockets & broadcast KICKED)
+    kickMemberFromCollab(shortId, userId);
+
+    res.status(200).json({
+      success: true,
+      message: 'Member removed from room successfully',
     });
   } catch (error) {
     next(error);

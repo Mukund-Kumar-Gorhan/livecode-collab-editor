@@ -429,3 +429,45 @@ export const setupCollabConnection = (
 
   logger.info(`User ${meta.userId} (${meta.role}) connected to room ${doc.name}. Total clients: ${doc.conns.size}`);
 };
+
+/**
+ * Updates a member's role in active Y.Doc connection metadata and broadcasts change via roles map.
+ */
+export const updateMemberRoleInCollab = (
+  shortId: string,
+  userId: string,
+  newRole: 'OWNER' | 'EDITOR' | 'VIEWER'
+): void => {
+  const doc = docs.get(shortId);
+  if (!doc) return;
+
+  // 1. Update live socket connection meta role
+  doc.conns.forEach((meta) => {
+    if (meta.userId === userId) {
+      meta.role = newRole;
+    }
+  });
+
+  // 2. Broadcast role change via Y.Doc Y.Map("roles")
+  doc.getMap('roles').set(userId, newRole);
+  logger.info(`Updated collab live role for user ${userId} in room ${shortId} to ${newRole}`);
+};
+
+/**
+ * Kicks a member from active Y.Doc session: broadcasts 'KICKED' and immediately closes connection.
+ */
+export const kickMemberFromCollab = (shortId: string, userId: string): void => {
+  const doc = docs.get(shortId);
+  if (!doc) return;
+
+  // Broadcast kicked status so connected client reacts immediately
+  doc.getMap('roles').set(userId, 'KICKED');
+
+  // Close live socket connections for this user
+  doc.conns.forEach((meta, conn) => {
+    if (meta.userId === userId) {
+      closeConn(doc, conn);
+    }
+  });
+  logger.info(`Kicked user ${userId} from live collab room ${shortId}`);
+};

@@ -19,6 +19,7 @@ import { ThemeSwitcher } from './ThemeSwitcher';
 
 export interface ActiveUser {
   clientId: number;
+  userId?: string;
   name: string;
   color: string;
   avatarUrl?: string | null;
@@ -36,6 +37,7 @@ interface EditorHeaderProps {
   onBackToDashboard?: () => void;
   onToggleExplorer?: () => void;
   isExplorerOpen?: boolean;
+  onOpenMembers?: () => void;
   connectionStatus?: 'connected' | 'connecting' | 'disconnected';
   activeUsers?: ActiveUser[];
   typingUsers?: string[];
@@ -52,6 +54,7 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
   onBackToDashboard,
   onToggleExplorer,
   isExplorerOpen = true,
+  onOpenMembers,
   connectionStatus = 'connected',
   activeUsers = [],
   typingUsers = [],
@@ -235,13 +238,18 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
           )}
         </div>
 
-        {/* Real User Count Badge */}
-        <div className="hidden sm:flex items-center space-x-1 bg-app-surface-2 border border-app-border rounded-lg px-2 py-1 text-xs text-app-text-muted">
+        {/* Members Button (opens Members panel modal) */}
+        <button
+          onClick={onOpenMembers}
+          className="flex items-center space-x-1.5 bg-app-surface-2 hover:bg-app-border rounded-lg px-2.5 py-1 text-xs text-app-text border border-app-border transition shadow-sm font-medium"
+          title="View and manage room members"
+        >
           <Users className="w-3.5 h-3.5 text-app-accent" />
-          <span className="text-[11px] font-medium">
-            {displayUserCount} {displayUserCount === 1 ? 'user' : 'users'}
+          <span className="hidden sm:inline text-[11px]">Members</span>
+          <span className="text-[10px] font-mono bg-app-border/80 px-1.5 py-0.2 rounded-full text-app-text-muted">
+            {room?.members?.length || displayUserCount}
           </span>
-        </div>
+        </button>
 
         {/* Header Theme Switcher */}
         <ThemeSwitcher compact />

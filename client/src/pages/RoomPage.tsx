@@ -6,6 +6,7 @@ import { EditorHeader, ActiveUser } from '../components/EditorHeader';
 import { CodeEditor } from '../components/CodeEditor';
 import { FileExplorer } from '../components/explorer/FileExplorer';
 import { EditorTabs } from '../components/editor/EditorTabs';
+import { MembersPanel } from '../components/members/MembersPanel';
 import { Room, RoomRole, RunResult } from '../types';
 import { roomApi, runnerApi } from '../services/api';
 import { useAuthStore } from '../store/authStore';
@@ -39,6 +40,7 @@ export const RoomPage: React.FC = () => {
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [consoleTab, setConsoleTab] = useState<'output' | 'stdin'>('output');
   const [stdinText, setStdinText] = useState<string>('');
+  const [isMembersOpen, setIsMembersOpen] = useState<boolean>(false);
 
   // Yjs: ydoc + provider
   const ydocRef = useRef<Y.Doc | null>(null);
@@ -147,6 +149,7 @@ export const RoomPage: React.FC = () => {
           const isSelf = clientId === ydoc.clientID;
           active.push({
             clientId,
+            userId: state.user.userId,
             name: state.user.name || 'Anonymous',
             color: state.user.color || '#0ea5e9',
             avatarUrl: state.user.avatarUrl || null,
@@ -186,6 +189,51 @@ export const RoomPage: React.FC = () => {
     };
     metadataMap.observe(handleMetadataSync);
     handleMetadataSync();
+
+    // Observe live role changes & member kicks via Y.Doc Y.Map("roles")
+    const rolesMap = ydoc.getMap('roles');
+    const handleRolesSync = () => {
+      if (!user?.id) return;
+      const myLiveRole = rolesMap.get(user.id) as string | undefined;
+
+      if (myLiveRole === 'KICKED') {
+        toast.error('You have been removed from this room');
+        navigate('/dashboard');
+        return;
+      }
+
+      if (myLiveRole && (myLiveRole === 'EDITOR' || myLiveRole === 'VIEWER' || myLiveRole === 'OWNER')) {
+        setRole((prevRole) => {
+          if (prevRole && prevRole !== myLiveRole) {
+            toast.info(`Your role changed to ${myLiveRole}`);
+          }
+          return myLiveRole as RoomRole;
+        });
+      }
+
+      // Sync members list state if room is loaded
+      setRoom((prevRoom) => {
+        if (!prevRoom || !prevRoom.members) return prevRoom;
+        let changed = false;
+        const filtered = prevRoom.members
+          .filter((m) => rolesMap.get(m.userId) !== 'KICKED')
+          .map((m) => {
+            const syncedRole = rolesMap.get(m.userId) as RoomRole | undefined;
+            if (syncedRole && syncedRole !== m.role && syncedRole !== 'KICKED' as any) {
+              changed = true;
+              return { ...m, role: syncedRole };
+            }
+            return m;
+          });
+
+        if (changed || filtered.length !== prevRoom.members.length) {
+          return { ...prevRoom, members: filtered };
+        }
+        return prevRoom;
+      });
+    };
+    rolesMap.observe(handleRolesSync);
+    handleRolesSync();
 
     // Observe files map changes (auto-open default file and react to deletions)
     const filesMap = ydoc.getMap('files');
@@ -239,6 +287,7 @@ export const RoomPage: React.FC = () => {
       filesMap.unobserve(handleFilesSync);
       yrun.unobserve(handleRunUpdate);
       metadataMap.unobserve(handleMetadataSync);
+      rolesMap.unobserve(handleRolesSync);
       provider.destroy();
       ydoc.destroy();
       ydocRef.current = null;
@@ -292,6 +341,46 @@ export const RoomPage: React.FC = () => {
     }
     setStdinText(newVal);
     ydocRef.current?.getMap('metadata').set('stdin', newVal);
+  };
+
+  const handleRoleChanged = async (targetUserId: string, newRole: 'EDITOR' | 'VIEWER') => {
+    if (!shortId) return;
+    try {
+      await roomApi.updateMemberRole(shortId, targetUserId, newRole);
+      setRoom((prev) => {
+        if (!prev || !prev.members) return prev;
+        return {
+          ...prev,
+          members: prev.members.map((m) =>
+            m.userId === targetUserId ? { ...m, role: newRole } : m
+          ),
+        };
+      });
+      toast.success(`Updated role to ${newRole}`);
+    } catch (err: any) {
+      const msg = err.response?.data?.message || err.message || 'Failed to update member role';
+      toast.error(msg);
+      throw err;
+    }
+  };
+
+  const handleMemberRemoved = async (targetUserId: string) => {
+    if (!shortId) return;
+    try {
+      await roomApi.removeMember(shortId, targetUserId);
+      setRoom((prev) => {
+        if (!prev || !prev.members) return prev;
+        return {
+          ...prev,
+          members: prev.members.filter((m) => m.userId !== targetUserId),
+        };
+      });
+      toast.success('Member removed from room');
+    } catch (err: any) {
+      const msg = err.response?.data?.message || err.message || 'Failed to remove member';
+      toast.error(msg);
+      throw err;
+    }
   };
 
   const handleRunCode = async () => {
@@ -370,6 +459,7 @@ export const RoomPage: React.FC = () => {
         onBackToDashboard={() => navigate('/dashboard')}
         onToggleExplorer={() => setIsExplorerOpen((prev) => !prev)}
         isExplorerOpen={isExplorerOpen}
+        onOpenMembers={() => setIsMembersOpen(true)}
         connectionStatus={connectionStatus}
         activeUsers={activeUsers}
         typingUsers={typingUsers}
@@ -580,6 +670,18 @@ export const RoomPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Members Panel Modal */}
+      <MembersPanel
+        isOpen={isMembersOpen}
+        onClose={() => setIsMembersOpen(false)}
+        room={room}
+        currentRole={role}
+        currentUserId={user?.id}
+        activeUsers={activeUsers}
+        onRoleChanged={handleRoleChanged}
+        onMemberRemoved={handleMemberRemoved}
+      />
     </div>
   );
 };

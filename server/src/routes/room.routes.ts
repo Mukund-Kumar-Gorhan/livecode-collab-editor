@@ -5,6 +5,7 @@ import {
   getRoomByShortId,
   joinRoom,
   updateMemberRole,
+  removeMember,
   deleteRoom,
   runRoomCode,
 } from '../controllers/room.controller.js';
@@ -21,5 +22,6 @@ roomRouter.get('/', listUserRooms);
 roomRouter.get('/:shortId', getRoomByShortId);
 roomRouter.post('/:shortId/join', joinRoom);
 roomRouter.patch('/:shortId/members/:userId', updateMemberRole);
+roomRouter.delete('/:shortId/members/:userId', removeMember);
 roomRouter.delete('/:shortId', deleteRoom);
 roomRouter.post('/:shortId/run', runRateLimiter, runRoomCode);
