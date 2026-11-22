@@ -13,14 +13,64 @@ import { Room, RoomMember, RoomRole } from '../../types';
 import { toast } from '../../store/toastStore';
 import { getUserInitials, getUserColor } from '../../utils/colors';
 
-interface ActiveUser {
+export interface ActiveUser {
   clientId: number;
-  userId?: string;
+  userId?: string | number;
   name: string;
   color: string;
   avatarUrl?: string | null;
   isCurrentUser?: boolean;
 }
+
+/**
+ * Checks if a room member is currently online using active awareness states.
+ * Safely extracts member user ID (from member.userId, member.user.id, or member.id)
+ * and matches against awareness userIds, handling string/number type mismatches.
+ * Supports multiple tabs per user: if at least one tab is connected, user is online.
+ */
+export const isMemberOnline = (
+  member: RoomMember,
+  activeUsers: ActiveUser[] = [],
+  currentUserId?: string | number
+): boolean => {
+  if (!member) return false;
+
+  // Collect all potential ID representations for this member
+  const candidateIds: string[] = [];
+  if (member.userId !== undefined && member.userId !== null) {
+    candidateIds.push(String(member.userId).trim());
+  }
+  if (member.user?.id !== undefined && member.user?.id !== null) {
+    candidateIds.push(String(member.user.id).trim());
+  }
+  if (candidateIds.length === 0 && member.id !== undefined && member.id !== null) {
+    candidateIds.push(String(member.id).trim());
+  }
+
+  if (candidateIds.length === 0) return false;
+
+  const currentUserIdStr =
+    currentUserId !== undefined && currentUserId !== null ? String(currentUserId).trim() : null;
+
+  return activeUsers.some((u) => {
+    if (!u) return false;
+
+    // Direct awareness userId match (handling string/number conversion)
+    if (u.userId !== undefined && u.userId !== null) {
+      const activeUserIdStr = String(u.userId).trim();
+      if (candidateIds.includes(activeUserIdStr)) {
+        return true;
+      }
+    }
+
+    // Fallback: If this active client is marked as the current user, match against currentUserId
+    if (u.isCurrentUser && currentUserIdStr && candidateIds.includes(currentUserIdStr)) {
+      return true;
+    }
+
+    return false;
+  });
+};
 
 interface MembersPanelProps {
   isOpen: boolean;
@@ -88,10 +138,8 @@ export const MembersPanel: React.FC<MembersPanelProps> = ({
   };
 
   // Helper to check if a user is currently online via awareness states
-  const checkIsOnline = (memberUserId: string): boolean => {
-    return activeUsers.some(
-      (u) => u.userId === memberUserId || (u.isCurrentUser && memberUserId === currentUserId)
-    );
+  const checkIsOnline = (member: RoomMember): boolean => {
+    return isMemberOnline(member, activeUsers, currentUserId);
   };
 
   return (
@@ -153,13 +201,15 @@ export const MembersPanel: React.FC<MembersPanelProps> = ({
         {/* Members List */}
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
           {members.map((member: RoomMember) => {
-            const isSelf = member.userId === currentUserId;
-            const isMemberOwner = member.role === 'OWNER' || member.userId === room.ownerId;
-            const isOnline = checkIsOnline(member.userId);
+            const rawMemberUserId = member.userId ?? member.user?.id ?? member.id;
+            const memberUserId = rawMemberUserId !== undefined && rawMemberUserId !== null ? String(rawMemberUserId).trim() : '';
+            const isSelf = memberUserId && currentUserId ? memberUserId === String(currentUserId).trim() : false;
+            const isMemberOwner = member.role === 'OWNER' || (room.ownerId && memberUserId ? memberUserId === String(room.ownerId).trim() : false);
+            const isOnline = checkIsOnline(member);
             const displayName = member.user?.name || member.user?.email?.split('@')[0] || 'User';
-            const userColor = member.user?.avatarColor || getUserColor(member.userId);
-            const isUpdating = updatingUserId === member.userId;
-            const isRemoving = removingUserId === member.userId;
+            const userColor = member.user?.avatarColor || getUserColor(memberUserId || 'guest');
+            const isUpdating = updatingUserId === memberUserId;
+            const isRemoving = removingUserId === memberUserId;
 
             return (
               <div
@@ -233,7 +283,7 @@ export const MembersPanel: React.FC<MembersPanelProps> = ({
                         <select
                           value={member.role}
                           onChange={(e) =>
-                            handleRoleSelect(member.userId, e.target.value as 'EDITOR' | 'VIEWER')
+                            handleRoleSelect(memberUserId, e.target.value as 'EDITOR' | 'VIEWER')
                           }
                           disabled={isUpdating || isRemoving}
                           className="bg-app-surface text-app-text text-[11px] font-semibold border border-app-border rounded px-2 py-1 focus:outline-none focus:border-app-accent cursor-pointer"
@@ -244,7 +294,7 @@ export const MembersPanel: React.FC<MembersPanelProps> = ({
                       )}
 
                       <button
-                        onClick={() => handleKick(member.userId, displayName)}
+                        onClick={() => handleKick(memberUserId, displayName)}
                         disabled={isUpdating || isRemoving}
                         className="p-1 text-app-text-muted hover:text-app-danger hover:bg-app-danger/10 rounded transition"
                         title={`Remove ${displayName} from room`}

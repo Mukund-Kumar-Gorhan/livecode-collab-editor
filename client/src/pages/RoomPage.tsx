@@ -131,11 +131,13 @@ export const RoomPage: React.FC = () => {
     // Set local awareness user details
     const userColor = user?.avatarColor || getUserColor(user?.id || user?.email || 'guest');
     const userName = user?.name || user?.email?.split('@')[0] || 'Anonymous';
+    const userIdStr = user?.id !== undefined && user?.id !== null ? String(user.id) : undefined;
     provider.awareness.setLocalStateField('user', {
       name: userName,
       color: userColor,
       avatarUrl: user?.avatarUrl || null,
-      userId: user?.id,
+      userId: userIdStr,
+      id: userIdStr,
     });
 
     // Handle peer awareness updates (active users & typing indicators)
@@ -145,19 +147,23 @@ export const RoomPage: React.FC = () => {
       const typing: string[] = [];
 
       states.forEach((state: any, clientId: number) => {
-        if (state.user) {
+        if (state && (state.user || state.userId || state.id)) {
+          const userObj = state.user || {};
+          const rawUserId = userObj.userId ?? userObj.id ?? state.userId ?? state.id;
+          const resolvedUserId = rawUserId !== undefined && rawUserId !== null ? String(rawUserId).trim() : undefined;
           const isSelf = clientId === ydoc.clientID;
+
           active.push({
             clientId,
-            userId: state.user.userId,
-            name: state.user.name || 'Anonymous',
-            color: state.user.color || '#0ea5e9',
-            avatarUrl: state.user.avatarUrl || null,
+            userId: resolvedUserId,
+            name: userObj.name || state.name || 'Anonymous',
+            color: userObj.color || state.color || '#0ea5e9',
+            avatarUrl: userObj.avatarUrl || state.avatarUrl || null,
             isCurrentUser: isSelf,
           });
 
           if (!isSelf && state.isTyping) {
-            typing.push(state.user.name || 'Anonymous');
+            typing.push(userObj.name || state.name || 'Anonymous');
           }
         }
       });
@@ -294,6 +300,22 @@ export const RoomPage: React.FC = () => {
       setCollab(null);
     };
   }, [shortId, hasToken, room]);
+
+  // Keep awareness user details updated if user profile changes or loads after socket connects
+  useEffect(() => {
+    if (!collab?.provider || !user) return;
+    const userColor = user.avatarColor || getUserColor(user.id || user.email || 'guest');
+    const userName = user.name || user.email?.split('@')[0] || 'Anonymous';
+    const userIdStr = user.id !== undefined && user.id !== null ? String(user.id) : undefined;
+
+    collab.provider.awareness.setLocalStateField('user', {
+      name: userName,
+      color: userColor,
+      avatarUrl: user.avatarUrl || null,
+      userId: userIdStr,
+      id: userIdStr,
+    });
+  }, [collab, user]);
 
   const handleSelectFile = (path: string) => {
     if (!openFiles.includes(path)) {
