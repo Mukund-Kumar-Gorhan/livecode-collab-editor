@@ -107,7 +107,7 @@ export const RegisterPage: React.FC = () => {
   return (
     <div className="min-h-screen w-full flex bg-app-bg text-app-text selection:bg-app-accent/30">
       {/* Top Floating Theme Switcher */}
-      <div className="absolute top-4 right-4 z-20">
+      <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-20">
         <ThemeSwitcher compact />
       </div>
 
@@ -161,8 +161,8 @@ export const RegisterPage: React.FC = () => {
       </div>
 
       {/* Right Authentication Form Panel */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-12">
-        <div className="w-full max-w-md bg-app-surface border border-app-border rounded-2xl shadow-2xl p-8 relative overflow-hidden">
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-4 xs:p-6 sm:p-12">
+        <div className="w-full max-w-md bg-app-surface border border-app-border rounded-2xl shadow-2xl p-5 sm:p-8 relative overflow-hidden">
           {/* Subtle top accent highlight */}
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-app-accent via-indigo-500 to-emerald-500" />
 

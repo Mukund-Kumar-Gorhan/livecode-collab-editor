@@ -59,7 +59,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
               leftIcon ? 'pl-9' : 'pl-3'
             } ${
               rightIcon || isPasswordToggle ? 'pr-9' : 'pr-3'
-            } py-2 text-xs text-app-text placeholder:text-app-text-muted/60 focus:outline-none focus:ring-1 transition-all duration-150 ${className}`}
+            } py-2.5 sm:py-2 min-h-[40px] text-xs text-app-text placeholder:text-app-text-muted/60 focus:outline-none focus:ring-1 transition-all duration-150 ${className}`}
             {...props}
           />
           {isPasswordToggle ? (

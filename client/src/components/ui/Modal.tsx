@@ -38,7 +38,7 @@ export const Modal: React.FC<ModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
@@ -49,10 +49,10 @@ export const Modal: React.FC<ModalProps> = ({
       <div
         role="dialog"
         aria-modal="true"
-        className={`relative w-full ${maxWidthStyles[maxWidth]} bg-app-surface border border-app-border rounded-xl shadow-2xl p-6 overflow-hidden z-10 animate-in fade-in zoom-in-95 duration-150`}
+        className={`relative w-full max-w-[calc(100vw-1.5rem)] ${maxWidthStyles[maxWidth]} bg-app-surface border border-app-border rounded-xl shadow-2xl p-4 sm:p-6 max-h-[90vh] flex flex-col z-10 animate-in fade-in zoom-in-95 duration-150`}
       >
         {/* Header */}
-        <div className="flex items-start justify-between mb-4">
+        <div className="flex items-start justify-between mb-4 shrink-0">
           <div>
             <h2 className="text-base font-bold text-app-text font-heading">{title}</h2>
             {description && (
@@ -61,14 +61,14 @@ export const Modal: React.FC<ModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-app-text-muted hover:text-app-text hover:bg-app-surface-2 transition-colors"
+            className="p-1 rounded-lg text-app-text-muted hover:text-app-text hover:bg-app-surface-2 transition-colors ml-2"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Body */}
-        <div>{children}</div>
+        <div className="overflow-y-auto flex-1">{children}</div>
       </div>
     </div>
   );

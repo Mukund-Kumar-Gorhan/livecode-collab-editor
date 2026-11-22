@@ -143,32 +143,32 @@ export const MembersPanel: React.FC<MembersPanelProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
       <div
-        className="relative w-full max-w-md bg-app-surface border border-app-border rounded-xl shadow-2xl flex flex-col overflow-hidden max-h-[85vh] animate-scale-up"
+        className="relative w-full max-w-[calc(100vw-1.5rem)] sm:max-w-md bg-app-surface border border-app-border rounded-xl shadow-2xl flex flex-col overflow-hidden max-h-[85vh] animate-scale-up"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-5 py-4 border-b border-app-border flex items-center justify-between bg-app-surface-2/60">
-          <div className="flex items-center space-x-2.5">
-            <div className="w-8 h-8 rounded-lg bg-app-accent/15 border border-app-accent/30 flex items-center justify-center text-app-accent">
+        <div className="px-4 sm:px-5 py-3.5 sm:py-4 border-b border-app-border flex items-center justify-between bg-app-surface-2/60 shrink-0">
+          <div className="flex items-center space-x-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-app-accent/15 border border-app-accent/30 flex items-center justify-center text-app-accent shrink-0">
               <Users className="w-4 h-4" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h2 className="text-sm font-bold text-app-text font-heading flex items-center space-x-2">
                 <span>Room Members</span>
                 <span className="text-[11px] font-mono font-normal bg-app-border px-2 py-0.5 rounded-full text-app-text-muted">
                   {members.length}
                 </span>
               </h2>
-              <p className="text-[11px] text-app-text-muted">
+              <p className="text-[11px] text-app-text-muted truncate max-w-[160px] xs:max-w-xs">
                 {room.name} ({room.shortId})
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-app-text-muted hover:text-app-text p-1.5 hover:bg-app-border/40 rounded-lg transition"
+            className="text-app-text-muted hover:text-app-text p-1.5 hover:bg-app-border/40 rounded-lg transition shrink-0 ml-2"
             title="Close"
           >
             <X className="w-4 h-4" />
@@ -176,20 +176,20 @@ export const MembersPanel: React.FC<MembersPanelProps> = ({
         </div>
 
         {/* Invite Link Card */}
-        <div className="p-4 border-b border-app-border bg-app-bg/40">
+        <div className="p-3 sm:p-4 border-b border-app-border bg-app-bg/40 shrink-0">
           <label className="block text-[11px] font-semibold text-app-text-muted uppercase tracking-wider mb-1.5">
             Invite Link
           </label>
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
             <input
               type="text"
               readOnly
               value={inviteUrl}
-              className="flex-1 bg-app-surface border border-app-border text-app-text text-xs rounded-lg px-3 py-2 font-mono select-all focus:outline-none"
+              className="flex-1 bg-app-surface border border-app-border text-app-text text-xs rounded-lg px-3 py-2 font-mono select-all focus:outline-none min-w-0"
             />
             <button
               onClick={handleCopyInvite}
-              className="flex items-center space-x-1.5 bg-app-accent hover:opacity-90 text-white text-xs font-semibold px-3 py-2 rounded-lg transition shrink-0"
+              className="flex items-center justify-center space-x-1.5 bg-app-accent hover:opacity-90 text-white text-xs font-semibold px-3 py-2 rounded-lg transition shrink-0"
               title="Copy invite link"
             >
               {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
@@ -199,7 +199,7 @@ export const MembersPanel: React.FC<MembersPanelProps> = ({
         </div>
 
         {/* Members List */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2">
           {members.map((member: RoomMember) => {
             const rawMemberUserId = member.userId ?? member.user?.id ?? member.id;
             const memberUserId = rawMemberUserId !== undefined && rawMemberUserId !== null ? String(rawMemberUserId).trim() : '';
@@ -242,13 +242,13 @@ export const MembersPanel: React.FC<MembersPanelProps> = ({
                     />
                   </div>
 
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center space-x-1.5">
-                      <span className="text-xs font-semibold text-app-text truncate">
+                      <span className="text-xs font-semibold text-app-text truncate max-w-[100px] xs:max-w-[140px] sm:max-w-none">
                         {displayName}
                       </span>
                       {isSelf && (
-                        <span className="text-[10px] text-app-accent font-mono bg-app-accent/15 px-1 rounded">
+                        <span className="text-[10px] text-app-accent font-mono bg-app-accent/15 px-1 rounded shrink-0">
                           You
                         </span>
                       )}
@@ -258,7 +258,7 @@ export const MembersPanel: React.FC<MembersPanelProps> = ({
                         </span>
                       )}
                     </div>
-                    <p className="text-[11px] text-app-text-muted truncate">
+                    <p className="text-[11px] text-app-text-muted truncate max-w-[100px] xs:max-w-[140px] sm:max-w-none">
                       {member.user?.email || 'member'}
                     </p>
                   </div>

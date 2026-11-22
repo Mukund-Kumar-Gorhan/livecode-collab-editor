@@ -164,7 +164,7 @@ export const DashboardPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-app-bg text-app-text flex flex-col selection:bg-app-accent/30">
       {/* Top Navbar */}
-      <header className="h-14 bg-app-surface border-b border-app-border px-4 sm:px-8 flex items-center justify-between sticky top-0 z-30 backdrop-blur-md">
+      <header className="h-14 bg-app-surface border-b border-app-border px-3 sm:px-8 flex items-center justify-between sticky top-0 z-30 backdrop-blur-md">
         <div className="flex items-center space-x-3">
           <div className="flex items-center space-x-2 text-app-accent font-bold tracking-wide">
             <Code2 className="w-5 h-5" />
@@ -181,9 +181,9 @@ export const DashboardPage: React.FC = () => {
       </header>
 
       {/* Main Container */}
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-8 py-8 flex flex-col space-y-8">
+      <main className="flex-1 max-w-6xl w-full mx-auto px-3 sm:px-8 py-6 sm:py-8 flex flex-col space-y-6 sm:space-y-8">
         {/* Welcome & Quick Action Banner */}
-        <div className="bg-app-surface border border-app-border rounded-2xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
+        <div className="bg-app-surface border border-app-border rounded-2xl p-4 sm:p-8 shadow-xl relative overflow-hidden">
           {/* Subtle accent highlight bar */}
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-app-accent via-indigo-500 to-emerald-500" />
 
@@ -227,13 +227,13 @@ export const DashboardPage: React.FC = () => {
                 Got a 6-character room code from a teammate? Paste it here.
               </CardDescription>
             </CardHeader>
-            <form onSubmit={handleJoinWithCode} className="flex gap-2">
+            <form onSubmit={handleJoinWithCode} className="flex flex-col xs:flex-row gap-2">
               <input
                 type="text"
                 value={joinCode}
                 onChange={(e) => setJoinCode(e.target.value)}
                 placeholder="e.g. ab12cd"
-                className="w-full bg-app-surface-2 border border-app-border rounded-lg px-3 py-2 text-xs text-app-text placeholder:text-app-text-muted/60 font-mono focus:outline-none focus:border-app-accent focus:ring-1 focus:ring-app-accent uppercase tracking-wider"
+                className="w-full bg-app-surface-2 border border-app-border rounded-lg px-3 py-2 min-h-[38px] text-xs text-app-text placeholder:text-app-text-muted/60 font-mono focus:outline-none focus:border-app-accent focus:ring-1 focus:ring-app-accent uppercase tracking-wider"
               />
               <Button
                 type="submit"
@@ -241,6 +241,7 @@ export const DashboardPage: React.FC = () => {
                 size="md"
                 isLoading={isJoining}
                 disabled={!joinCode.trim()}
+                className="shrink-0"
               >
                 Join
               </Button>

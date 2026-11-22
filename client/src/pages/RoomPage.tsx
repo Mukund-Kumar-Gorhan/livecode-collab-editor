@@ -13,7 +13,8 @@ import { useAuthStore } from '../store/authStore';
 import { toast } from '../store/toastStore';
 import { getUserColor } from '../utils/colors';
 import { getLanguageInfo } from '../utils/language';
-import { Terminal, CheckCircle2, Loader2, AlertCircle, Keyboard } from 'lucide-react';
+import { downloadWorkspaceAsZip } from '../utils/zipUtils';
+import { Terminal, CheckCircle2, Loader2, AlertCircle, Keyboard, ChevronUp, ChevronDown } from 'lucide-react';
 
 export const RoomPage: React.FC = () => {
   const { shortId } = useParams<{ shortId: string }>();
@@ -41,6 +42,33 @@ export const RoomPage: React.FC = () => {
   const [consoleTab, setConsoleTab] = useState<'output' | 'stdin'>('output');
   const [stdinText, setStdinText] = useState<string>('');
   const [isMembersOpen, setIsMembersOpen] = useState<boolean>(false);
+  const [isConsoleCollapsed, setIsConsoleCollapsed] = useState<boolean>(false);
+  const [consoleHeight, setConsoleHeight] = useState<number>(() =>
+    typeof window !== 'undefined' && window.innerWidth < 768 ? 140 : 176
+  );
+  const [isResizingConsole, setIsResizingConsole] = useState<boolean>(false);
+
+  // Mouse drag handler for console panel height
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizingConsole) return;
+      const newHeight = Math.max(70, Math.min(window.innerHeight - 150, window.innerHeight - e.clientY));
+      setConsoleHeight(newHeight);
+      setIsConsoleCollapsed(false);
+    };
+    const handleMouseUp = () => {
+      if (isResizingConsole) setIsResizingConsole(false);
+    };
+
+    if (isResizingConsole) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizingConsole]);
 
   // Yjs: ydoc + provider
   const ydocRef = useRef<Y.Doc | null>(null);
@@ -321,6 +349,9 @@ export const RoomPage: React.FC = () => {
       setOpenFiles((prev) => [...prev, path]);
     }
     setActiveFile(path);
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      setIsExplorerOpen(false);
+    }
   };
 
   const handleCloseTab = (path: string, e: React.MouseEvent) => {
@@ -439,26 +470,26 @@ export const RoomPage: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#1e1e1e] text-gray-300">
-        <Loader2 className="w-8 h-8 text-sky-400 animate-spin mb-3" />
-        <span className="text-xs font-mono text-gray-400">Loading collaborative room {shortId}...</span>
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-app-bg text-app-text-muted">
+        <Loader2 className="w-8 h-8 text-app-accent animate-spin mb-3" />
+        <span className="text-xs font-mono text-app-text-muted">Loading collaborative room {shortId}...</span>
       </div>
     );
   }
 
   if (error || !room) {
     return (
-      <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#181818] text-[#cccccc] p-6 text-center">
-        <div className="w-12 h-12 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 mb-4">
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-app-bg text-app-text p-6 text-center">
+        <div className="w-12 h-12 rounded-xl bg-app-danger/10 border border-app-danger/20 flex items-center justify-center text-app-danger mb-4">
           <AlertCircle className="w-6 h-6" />
         </div>
-        <h2 className="text-base font-bold text-gray-100">Room Unavailable</h2>
-        <p className="text-xs text-gray-400 max-w-sm mt-1 mb-6">
+        <h2 className="text-base font-bold text-app-text">Room Unavailable</h2>
+        <p className="text-xs text-app-text-muted max-w-sm mt-1 mb-6">
           {error || `Room "${shortId}" could not be found or you do not have permission to access it.`}
         </p>
         <button
           onClick={() => navigate('/dashboard')}
-          className="bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium px-4 py-2 rounded-lg transition"
+          className="bg-app-accent hover:opacity-90 text-app-accent-contrast text-xs font-semibold px-4 py-2 rounded-lg transition"
         >
           Back to Dashboard
         </button>
@@ -467,7 +498,7 @@ export const RoomPage: React.FC = () => {
   }
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-[#1e1e1e] text-[#cccccc] overflow-hidden select-none">
+    <div className="h-screen w-screen flex flex-col bg-app-bg text-app-text overflow-hidden select-none">
       {/* Top Navigation Bar with Live Collaboration Stats */}
       <EditorHeader
         room={room}
@@ -481,6 +512,13 @@ export const RoomPage: React.FC = () => {
         onToggleExplorer={() => setIsExplorerOpen((prev) => !prev)}
         isExplorerOpen={isExplorerOpen}
         onOpenMembers={() => setIsMembersOpen(true)}
+        onDownloadZip={() => {
+          if (ydocRef.current) {
+            downloadWorkspaceAsZip(ydocRef.current).catch((err) =>
+              toast.error(err.message || 'ZIP error')
+            );
+          }
+        }}
         connectionStatus={connectionStatus}
         activeUsers={activeUsers}
         typingUsers={typingUsers}
@@ -523,170 +561,208 @@ export const RoomPage: React.FC = () => {
           </div>
 
           {/* Bottom Output Console Panel */}
-          <div className="h-44 bg-app-bg border-t border-app-border flex flex-col shrink-0">
-            <div className="h-8 bg-app-surface px-3 flex items-center justify-between border-b border-app-border text-xs select-none">
-              <div className="flex items-center space-x-1">
+          <div
+            style={{ height: isConsoleCollapsed ? '32px' : `${consoleHeight}px` }}
+            className="bg-app-bg border-t border-app-border flex flex-col shrink-0 relative transition-all duration-150"
+          >
+            {/* Top Resizer Handle (mouse drag) */}
+            {!isConsoleCollapsed && (
+              <div
+                onMouseDown={() => setIsResizingConsole(true)}
+                className="absolute -top-1 left-0 right-0 h-2 cursor-row-resize hover:bg-app-accent/40 active:bg-app-accent transition-colors z-20"
+                title="Drag to resize console"
+              />
+            )}
+
+            <div className="h-8 bg-app-surface px-2 sm:px-3 flex items-center justify-between border-b border-app-border text-xs select-none min-w-0">
+              <div className="flex items-center space-x-1 min-w-0">
                 {/* Tab: Output */}
                 <button
                   type="button"
-                  onClick={() => setConsoleTab('output')}
-                  className={`flex items-center space-x-1.5 px-2.5 py-1 rounded text-[11px] font-semibold transition ${
+                  onClick={() => {
+                    setConsoleTab('output');
+                    if (isConsoleCollapsed) setIsConsoleCollapsed(false);
+                  }}
+                  className={`flex items-center space-x-1 sm:space-x-1.5 px-2 sm:px-2.5 py-1 rounded text-[10px] sm:text-[11px] font-semibold transition shrink-0 ${
                     consoleTab === 'output'
                       ? 'bg-app-bg text-app-text border border-app-border/60 shadow-sm'
                       : 'text-app-text-muted hover:text-app-text hover:bg-app-bg/50'
                   }`}
                 >
-                  <Terminal className="w-3.5 h-3.5 text-app-accent" />
-                  <span className="uppercase tracking-wider">Output {activeFile ? `(${activeFile})` : ''}</span>
+                  <Terminal className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-app-accent shrink-0" />
+                  <span className="uppercase tracking-wider">Output</span>
+                  <span className="hidden sm:inline text-app-text-muted text-[10px]">{activeFile ? `(${activeFile})` : ''}</span>
                 </button>
 
                 {/* Tab: Input (stdin) */}
                 <button
                   type="button"
-                  onClick={() => setConsoleTab('stdin')}
-                  className={`flex items-center space-x-1.5 px-2.5 py-1 rounded text-[11px] font-semibold transition ${
+                  onClick={() => {
+                    setConsoleTab('stdin');
+                    if (isConsoleCollapsed) setIsConsoleCollapsed(false);
+                  }}
+                  className={`flex items-center space-x-1 sm:space-x-1.5 px-2 sm:px-2.5 py-1 rounded text-[10px] sm:text-[11px] font-semibold transition shrink-0 ${
                     consoleTab === 'stdin'
                       ? 'bg-app-bg text-app-text border border-app-border/60 shadow-sm'
                       : 'text-app-text-muted hover:text-app-text hover:bg-app-bg/50'
                   }`}
                 >
-                  <Keyboard className="w-3.5 h-3.5 text-sky-400" />
-                  <span className="uppercase tracking-wider">Input (stdin)</span>
+                  <Keyboard className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-sky-400 shrink-0" />
+                  <span className="uppercase tracking-wider">Input</span>
+                  <span className="hidden sm:inline uppercase tracking-wider">(stdin)</span>
                   {stdinText.trim().length > 0 && (
                     <span className="w-1.5 h-1.5 rounded-full bg-sky-400 ml-0.5" title="Has stdin input" />
                   )}
                 </button>
               </div>
 
-              {/* Real Runner Health Indicator */}
-              {runnerStatus === 'connected' && (
-                <div className="flex items-center space-x-1.5 text-app-success text-[11px]">
-                  <CheckCircle2 className="w-3 h-3" />
-                  <span>Runner: Ready (Docker Sandbox)</span>
-                </div>
-              )}
-              {runnerStatus === 'checking' && (
-                <div className="flex items-center space-x-1.5 text-app-warning text-[11px]">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  <span>Runner: Checking health...</span>
-                </div>
-              )}
-              {runnerStatus === 'disconnected' && (
-                <div
-                  className="flex items-center space-x-1.5 text-app-danger text-[11px]"
-                  title="Runner service unreachable"
-                >
-                  <AlertCircle className="w-3 h-3" />
-                  <span>Runner: Offline</span>
-                </div>
-              )}
-            </div>
-
-            {/* Console Content: Stdin Input Tab OR Output Tab */}
-            {consoleTab === 'stdin' ? (
-              <div className="flex-1 flex flex-col p-2 bg-app-bg overflow-hidden">
-                <div className="flex items-center justify-between pb-1.5 px-1 text-[11px] text-app-text-muted border-b border-app-border/40">
-                  <span>
-                    Provide program input (stdin) fed to <code className="text-app-accent font-mono text-[10px]">scanf / cin / input() / Scanner</code>
-                  </span>
-                  <span className="font-mono text-[10px]">
-                    {new TextEncoder().encode(stdinText).length} / 10240 B {role === 'VIEWER' && '(Read-only for viewers)'}
-                  </span>
-                </div>
-                <textarea
-                  value={stdinText}
-                  onChange={(e) => handleStdinChange(e.target.value)}
-                  readOnly={role === 'VIEWER'}
-                  disabled={role === 'VIEWER'}
-                  placeholder={
-                    role === 'VIEWER'
-                      ? 'Standard input (stdin) is read-only for viewers'
-                      : 'Enter program input (stdin) here...\nEach line will be fed to scanf / cin / input() in order (e.g.\n5\n7)'
-                  }
-                  className="flex-1 w-full bg-transparent resize-none p-2 font-mono text-xs text-app-text placeholder:text-app-text-muted/40 focus:outline-none"
-                  maxLength={10240}
-                  spellCheck={false}
-                />
-              </div>
-            ) : (
-              <div className="flex-1 p-3 font-mono text-xs overflow-y-auto selection:bg-app-accent/30 leading-relaxed text-app-text">
-                {latestRun ? (
-                  <div className="flex flex-col space-y-2">
-                    {/* Meta details bar */}
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] pb-1.5 border-b border-app-border text-app-text-muted">
-                      <span className="text-app-accent font-semibold">
-                        Run by {latestRun.runBy}
-                      </span>
-                      <span>•</span>
-                      <span>
-                        Duration: <span className="text-app-text">{latestRun.durationMs}ms</span>
-                      </span>
-                      <span>•</span>
-                      <span>
-                        Exit code:{' '}
-                        <span
-                          className={
-                            latestRun.exitCode === 0
-                              ? 'text-app-success font-semibold'
-                              : 'text-app-danger font-semibold'
-                          }
-                        >
-                          {latestRun.exitCode ?? 'none'}
-                        </span>
-                      </span>
-                      {latestRun.timedOut && (
-                        <span className="bg-app-warning/20 text-app-warning border border-app-warning/40 px-2 py-0.5 rounded font-semibold text-[10px] animate-pulse">
-                          Time limit exceeded (5s)
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Input used summary (first line) */}
-                    {latestRun.stdin !== undefined && latestRun.stdin.length > 0 && (
-                      <div className="flex items-center space-x-2 text-[11px] text-app-text-muted bg-app-surface/60 px-2 py-1 rounded border border-app-border/40 font-mono">
-                        <span className="text-sky-400 font-semibold">Input used:</span>
-                        <span className="text-app-text truncate max-w-lg">
-                          {latestRun.stdin.split('\n')[0]}
-                          {latestRun.stdin.includes('\n') ? ' ...' : ''}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Explicit timeout notice */}
-                    {latestRun.timedOut && (
-                      <div className="text-app-warning font-semibold text-xs flex items-center space-x-1.5 bg-app-warning/15 p-2 rounded border border-app-warning/30">
-                        <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                        <span>Time limit exceeded: Execution exceeded 5.0 seconds and container was terminated.</span>
-                      </div>
-                    )}
-
-                    {/* Standard Output */}
-                    {latestRun.stdout && (
-                      <div className="text-app-text whitespace-pre-wrap">
-                        {latestRun.stdout}
-                      </div>
-                    )}
-
-                    {/* Standard Error (Red) */}
-                    {latestRun.stderr && (
-                      <div className="text-app-danger whitespace-pre-wrap bg-app-danger/10 p-2 rounded border border-app-danger/25">
-                        {latestRun.stderr}
-                      </div>
-                    )}
-
-                    {/* Empty output notice */}
-                    {!latestRun.stdout && !latestRun.stderr && !latestRun.timedOut && (
-                      <div className="text-app-text-muted italic text-xs">
-                        (Process exited with code {latestRun.exitCode} without producing console output)
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="text-app-text-muted whitespace-pre-wrap">
-                    {consoleOutput}
+              {/* Real Runner Health Indicator & Collapse Button */}
+              <div className="flex items-center space-x-2 shrink-0">
+                {runnerStatus === 'connected' && (
+                  <div className="flex items-center space-x-1 text-app-success text-[10px] sm:text-[11px]">
+                    <CheckCircle2 className="w-3 h-3 shrink-0" />
+                    <span>Runner: Ready<span className="hidden md:inline"> (Docker Sandbox)</span></span>
                   </div>
                 )}
+                {runnerStatus === 'checking' && (
+                  <div className="flex items-center space-x-1 text-app-warning text-[10px] sm:text-[11px]">
+                    <Loader2 className="w-3 h-3 animate-spin shrink-0" />
+                    <span>Checking...</span>
+                  </div>
+                )}
+                {runnerStatus === 'disconnected' && (
+                  <div
+                    className="flex items-center space-x-1 text-app-danger text-[10px] sm:text-[11px]"
+                    title="Runner service unreachable"
+                  >
+                    <AlertCircle className="w-3 h-3 shrink-0" />
+                    <span>Offline</span>
+                  </div>
+                )}
+
+                {/* Collapse / Expand Toggle Button */}
+                <button
+                  type="button"
+                  onClick={() => setIsConsoleCollapsed((prev) => !prev)}
+                  className="p-1 rounded text-app-text-muted hover:text-app-text hover:bg-app-surface-2 transition shrink-0 ml-1"
+                  title={isConsoleCollapsed ? 'Expand console' : 'Collapse console'}
+                >
+                  {isConsoleCollapsed ? (
+                    <ChevronUp className="w-3.5 h-3.5" />
+                  ) : (
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  )}
+                </button>
               </div>
+            </div>
+
+            {/* Console Content: Stdin Input Tab OR Output Tab (Hidden when collapsed) */}
+            {!isConsoleCollapsed && (
+              consoleTab === 'stdin' ? (
+                <div className="flex-1 flex flex-col p-2 bg-app-bg overflow-hidden">
+                  <div className="flex items-center justify-between pb-1.5 px-1 text-[11px] text-app-text-muted border-b border-app-border/40">
+                    <span className="truncate pr-2">
+                      Provide program input (stdin) fed to <code className="text-app-accent font-mono text-[10px]">input() / cin</code>
+                    </span>
+                    <span className="font-mono text-[10px] shrink-0">
+                      {new TextEncoder().encode(stdinText).length} / 10240 B {role === 'VIEWER' && '(Read-only)'}
+                    </span>
+                  </div>
+                  <textarea
+                    value={stdinText}
+                    onChange={(e) => handleStdinChange(e.target.value)}
+                    readOnly={role === 'VIEWER'}
+                    disabled={role === 'VIEWER'}
+                    placeholder={
+                      role === 'VIEWER'
+                        ? 'Standard input (stdin) is read-only for viewers'
+                        : 'Enter program input (stdin) here...\nEach line will be fed to scanf / cin / input() in order (e.g.\n5\n7)'
+                    }
+                    className="flex-1 w-full bg-transparent resize-none p-2 font-mono text-xs text-app-text placeholder:text-app-text-muted/40 focus:outline-none"
+                    maxLength={10240}
+                    spellCheck={false}
+                  />
+                </div>
+              ) : (
+                <div className="flex-1 p-2 sm:p-3 font-mono text-xs overflow-y-auto selection:bg-app-accent/30 leading-relaxed text-app-text">
+                  {latestRun ? (
+                    <div className="flex flex-col space-y-2">
+                      {/* Meta details bar */}
+                      <div className="flex flex-wrap items-center gap-x-2.5 sm:gap-x-3 gap-y-1 text-[10px] sm:text-[11px] pb-1.5 border-b border-app-border text-app-text-muted">
+                        <span className="text-app-accent font-semibold truncate max-w-[120px] sm:max-w-none">
+                          Run by {latestRun.runBy}
+                        </span>
+                        <span>•</span>
+                        <span>
+                          Duration: <span className="text-app-text">{latestRun.durationMs}ms</span>
+                        </span>
+                        <span>•</span>
+                        <span>
+                          Exit code:{' '}
+                          <span
+                            className={
+                              latestRun.exitCode === 0
+                                ? 'text-app-success font-semibold'
+                                : 'text-app-danger font-semibold'
+                            }
+                          >
+                            {latestRun.exitCode ?? 'none'}
+                          </span>
+                        </span>
+                        {latestRun.timedOut && (
+                          <span className="bg-app-warning/20 text-app-warning border border-app-warning/40 px-2 py-0.5 rounded font-semibold text-[10px] animate-pulse">
+                            Time limit exceeded (5s)
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Input used summary (first line) */}
+                      {latestRun.stdin !== undefined && latestRun.stdin.length > 0 && (
+                        <div className="flex items-center space-x-2 text-[10.5px] sm:text-[11px] text-app-text-muted bg-app-surface/60 px-2 py-1 rounded border border-app-border/40 font-mono">
+                          <span className="text-sky-400 font-semibold shrink-0">Input:</span>
+                          <span className="text-app-text truncate max-w-xs sm:max-w-lg">
+                            {latestRun.stdin.split('\n')[0]}
+                            {latestRun.stdin.includes('\n') ? ' ...' : ''}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Explicit timeout notice */}
+                      {latestRun.timedOut && (
+                        <div className="text-app-warning font-semibold text-xs flex items-center space-x-1.5 bg-app-warning/15 p-2 rounded border border-app-warning/30">
+                          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                          <span>Time limit exceeded: Execution exceeded 5.0 seconds.</span>
+                        </div>
+                      )}
+
+                      {/* Standard Output */}
+                      {latestRun.stdout && (
+                        <div className="text-app-text whitespace-pre-wrap break-words">
+                          {latestRun.stdout}
+                        </div>
+                      )}
+
+                      {/* Standard Error (Red) */}
+                      {latestRun.stderr && (
+                        <div className="text-app-danger whitespace-pre-wrap break-words bg-app-danger/10 p-2 rounded border border-app-danger/25">
+                          {latestRun.stderr}
+                        </div>
+                      )}
+
+                      {/* Empty output notice */}
+                      {!latestRun.stdout && !latestRun.stderr && !latestRun.timedOut && (
+                        <div className="text-app-text-muted italic text-xs">
+                          (Process exited with code {latestRun.exitCode} without producing console output)
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-app-text-muted whitespace-pre-wrap break-words">
+                      {consoleOutput}
+                    </div>
+                  )}
+                </div>
+              )
             )}
           </div>
         </div>

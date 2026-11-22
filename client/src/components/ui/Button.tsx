@@ -28,9 +28,9 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       'inline-flex items-center justify-center font-medium rounded-lg transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none select-none active:scale-[0.98]';
 
     const sizeStyles = {
-      sm: 'text-xs px-2.5 py-1.5 gap-1.5',
-      md: 'text-xs px-3.5 py-2 gap-2',
-      lg: 'text-sm px-5 py-2.5 gap-2.5',
+      sm: 'text-xs px-2.5 py-1.5 min-h-[32px] gap-1.5',
+      md: 'text-xs px-3.5 py-2 min-h-[38px] sm:min-h-[36px] gap-2',
+      lg: 'text-sm px-5 py-2.5 min-h-[44px] gap-2.5',
     };
 
     const variantStyles = {

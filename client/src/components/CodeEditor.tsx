@@ -27,9 +27,18 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
 }) => {
   const { theme } = useThemeStore();
   const [editor, setEditor] = useState<any>(null);
+  const [isMobile, setIsMobile] = useState<boolean>(() => typeof window !== 'undefined' && window.innerWidth < 768);
   const monacoRef = useRef<any>(null);
   const bindingRef = useRef<MonacoBinding | null>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const langInfo = activeFile ? getLanguageInfo(activeFile) : null;
   const currentMonacoLang = langInfo ? langInfo.monacoLanguage : 'plaintext';
@@ -49,17 +58,24 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     }
   }, [theme]);
 
-  // Update dynamic editor options (font size, tab size, readOnly)
+  // Update dynamic editor options (font size, tab size, readOnly, mobile adjustments)
+  const effectiveFontSize = isMobile ? Math.min(fontSize, 13) : fontSize;
+
   useEffect(() => {
     if (editor) {
       editor.updateOptions({
-        fontSize,
+        fontSize: effectiveFontSize,
         tabSize,
         readOnly: isViewer,
         domReadOnly: isViewer,
+        minimap: { enabled: !isMobile },
+        overviewRulerLanes: isMobile ? 0 : 3,
+        glyphMargin: !isMobile,
+        folding: !isMobile,
+        lineNumbersMinChars: isMobile ? 3 : 5,
       });
     }
-  }, [editor, fontSize, tabSize, isViewer]);
+  }, [editor, effectiveFontSize, tabSize, isViewer, isMobile]);
 
   // Update local awareness activeFile
   useEffect(() => {
@@ -229,11 +245,12 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         language={currentMonacoLang}
         onMount={handleEditorDidMount}
         options={{
-          minimap: { enabled: true },
-          fontSize,
+          minimap: { enabled: !isMobile },
+          fontSize: effectiveFontSize,
           fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, 'Courier New', monospace",
           fontLigatures: true,
           lineNumbers: 'on',
+          lineNumbersMinChars: isMobile ? 3 : 5,
           scrollBeyondLastLine: false,
           automaticLayout: true,
           tabSize,
@@ -245,6 +262,14 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
           suggestOnTriggerCharacters: true,
           readOnly: isViewer,
           domReadOnly: isViewer,
+          overviewRulerLanes: isMobile ? 0 : 3,
+          glyphMargin: !isMobile,
+          folding: !isMobile,
+          scrollbar: {
+            verticalScrollbarSize: isMobile ? 6 : 10,
+            horizontalScrollbarSize: isMobile ? 6 : 10,
+            alwaysConsumeMouseWheel: false,
+          },
         }}
       />
     </div>

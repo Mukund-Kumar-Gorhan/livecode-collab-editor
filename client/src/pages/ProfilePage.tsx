@@ -249,7 +249,7 @@ export const ProfilePage: React.FC = () => {
   return (
     <div className="min-h-screen bg-app-bg text-app-text pb-28 selection:bg-app-accent/30">
       {/* Top Header */}
-      <header className="sticky top-0 z-40 bg-app-surface/90 backdrop-blur-md border-b border-app-border px-4 sm:px-8 py-3.5 flex items-center justify-between">
+      <header className="sticky top-0 z-40 bg-app-surface/90 backdrop-blur-md border-b border-app-border px-3 sm:px-8 py-3 flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <button
             onClick={() => navigate('/dashboard')}
@@ -655,8 +655,8 @@ export const ProfilePage: React.FC = () => {
       </main>
 
       {/* Sticky Bottom Save Bar */}
-      <footer className="fixed bottom-0 left-0 right-0 bg-app-surface/95 backdrop-blur-md border-t border-app-border py-3 px-4 sm:px-8 z-40 shadow-2xl">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
+      <footer className="fixed bottom-0 left-0 right-0 bg-app-surface/95 backdrop-blur-md border-t border-app-border py-2.5 px-3 sm:px-8 z-40 shadow-2xl">
+        <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center space-x-2">
             {hasUnsavedChanges ? (
               <span className="text-xs text-app-warning font-semibold flex items-center space-x-1.5">

@@ -65,6 +65,15 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
   const [width, setWidth] = useState<number>(240);
   const [isResizing, setIsResizing] = useState(false);
   const [entryFile, setEntryFile] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState<boolean>(() => typeof window !== 'undefined' && window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Drag and drop state
   const [isDragging, setIsDragging] = useState(false);
@@ -742,7 +751,12 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
     return (
       <div
         key={node.id}
-        onClick={() => onSelectFile(node.id)}
+        onClick={() => {
+          onSelectFile(node.id);
+          if (isMobile && onToggleOpen) {
+            onToggleOpen();
+          }
+        }}
         onContextMenu={(e) => handleContextMenu(e, node)}
         style={{ paddingLeft: `${depth * 12 + 20}px` }}
         className={`flex items-center space-x-1.5 py-1 pr-2 cursor-pointer text-xs font-mono transition-colors group ${
@@ -805,7 +819,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
 
   if (!isOpen) {
     return (
-      <div className="h-full bg-app-surface border-r border-app-border flex flex-col items-center py-2 px-1">
+      <div className="hidden md:flex h-full bg-app-surface border-r border-app-border flex-col items-center py-2 px-1">
         <button
           onClick={onToggleOpen}
           className="p-1 text-app-text-muted hover:text-app-text hover:bg-app-surface-2 rounded transition"
@@ -818,15 +832,28 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
   }
 
   return (
-    <div
-      ref={containerRef}
-      style={{ width: `${width}px` }}
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
-      className="h-full bg-app-surface border-r border-app-border flex flex-col relative select-none shrink-0"
-    >
+    <>
+      {/* Mobile Backdrop Overlay */}
+      {isMobile && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs z-30 transition-opacity"
+          onClick={onToggleOpen}
+        />
+      )}
+
+      <div
+        ref={containerRef}
+        style={isMobile ? undefined : { width: `${width}px` }}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        className={
+          isMobile
+            ? 'fixed inset-y-0 left-0 z-40 w-72 max-w-[85vw] h-full bg-app-surface border-r border-app-border flex flex-col select-none shrink-0 shadow-2xl animate-in slide-in-from-left duration-200'
+            : 'h-full bg-app-surface border-r border-app-border flex flex-col relative select-none shrink-0'
+        }
+      >
       {/* Hidden File / Folder Upload Inputs */}
       <input
         type="file"
@@ -964,7 +991,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
       {/* Resizer Handle */}
       <div
         onMouseDown={() => setIsResizing(true)}
-        className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-app-accent/40 active:bg-app-accent transition-colors z-20"
+        className="hidden md:block absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-app-accent/40 active:bg-app-accent transition-colors z-20"
       />
 
       {/* Right-click Context Menu */}
@@ -1078,7 +1105,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
       {/* Creation / Rename / Delete Modal */}
       {modalType && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-app-surface border border-app-border rounded-xl shadow-2xl max-w-sm w-full p-4 flex flex-col space-y-3">
+          <div className="bg-app-surface border border-app-border rounded-xl shadow-2xl max-w-[calc(100vw-2rem)] sm:max-w-sm w-full p-4 flex flex-col space-y-3">
             <div className="flex items-center justify-between pb-2 border-b border-app-border">
               <h3 className="text-sm font-semibold text-app-text">
                 {modalType === 'new-file' && 'Create New File'}
@@ -1171,7 +1198,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
       {/* Duplicate Paths Conflict Resolution Modal */}
       {conflictState && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-app-surface border border-app-border rounded-xl shadow-2xl max-w-md w-full p-5 flex flex-col space-y-4">
+          <div className="bg-app-surface border border-app-border rounded-xl shadow-2xl max-w-[calc(100vw-2rem)] sm:max-w-md w-full p-4 sm:p-5 flex flex-col space-y-4">
             <div className="flex items-center space-x-2 pb-2 border-b border-app-border text-app-warning">
               <AlertTriangle className="w-5 h-5 shrink-0" />
               <h3 className="text-sm font-semibold text-app-text">File Conflict Detected</h3>
@@ -1201,7 +1228,7 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
               <span>Apply to all remaining conflicts ({conflictState.conflicts.length - conflictState.currentIndex})</span>
             </label>
 
-            <div className="flex justify-end space-x-2 pt-2">
+            <div className="flex flex-wrap sm:flex-nowrap justify-end gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => handleResolveConflict('skip')}
@@ -1228,5 +1255,6 @@ export const FileExplorer: React.FC<FileExplorerProps> = ({
         </div>
       )}
     </div>
+  </>
   );
 };
