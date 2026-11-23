@@ -1,5 +1,17 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { Room, RoomRole, SupportedLanguage, User, RunResult } from '../types';
+import {
+  Room,
+  RoomRole,
+  SupportedLanguage,
+  User,
+  RunResult,
+  AdminStats,
+  AdminUserListItem,
+  AdminRoomListItem,
+  AdminRunLogItem,
+  AdminAuditLogItem,
+  PaginatedResult,
+} from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
@@ -13,8 +25,8 @@ export const apiClient = axios.create({
 
 // Reference to token getter/setter from Zustand store (injected to prevent circular dependencies)
 let getAccessToken: () => string | null = () => null;
-let setAccessToken: (token: string | null) => void = () => {};
-let onAuthFailure: () => void = () => {};
+let setAccessToken: (token: string | null) => void = () => { };
+let onAuthFailure: () => void = () => { };
 
 export const injectAuthStore = (
   getToken: () => string | null,
@@ -271,3 +283,86 @@ export const runnerApi = {
     return res.data;
   },
 };
+
+// Admin panel endpoints
+export const adminApi = {
+  getStats: async () => {
+    const res = await apiClient.get<{
+      success: boolean;
+      data: AdminStats;
+    }>('/admin/stats');
+    return res.data;
+  },
+
+  getUsers: async (params?: { search?: string; page?: number; limit?: number }) => {
+    const res = await apiClient.get<{
+      success: boolean;
+      data: PaginatedResult<AdminUserListItem>;
+    }>('/admin/users', { params });
+    return res.data;
+  },
+
+  updateUserStatus: async (id: string, status: 'ACTIVE' | 'DISABLED') => {
+    const res = await apiClient.patch<{
+      success: boolean;
+      message: string;
+      data: { id: string; status: 'ACTIVE' | 'DISABLED' };
+    }>(`/admin/users/${id}/status`, { status });
+    return res.data;
+  },
+
+  updateUserRole: async (id: string, isAdmin: boolean) => {
+    const res = await apiClient.patch<{
+      success: boolean;
+      message: string;
+      data: { id: string; isAdmin: boolean };
+    }>(`/admin/users/${id}/role`, { isAdmin });
+    return res.data;
+  },
+
+  deleteUser: async (id: string) => {
+    const res = await apiClient.delete<{
+      success: boolean;
+      message: string;
+    }>(`/admin/users/${id}`);
+    return res.data;
+  },
+
+  getRooms: async (params?: { search?: string; page?: number; limit?: number }) => {
+    const res = await apiClient.get<{
+      success: boolean;
+      data: PaginatedResult<AdminRoomListItem>;
+    }>('/admin/rooms', { params });
+    return res.data;
+  },
+
+  deleteRoom: async (shortId: string) => {
+    const res = await apiClient.delete<{
+      success: boolean;
+      message: string;
+    }>(`/admin/rooms/${shortId}`);
+    return res.data;
+  },
+
+  getRunLogs: async (params?: {
+    language?: string;
+    status?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const res = await apiClient.get<{
+      success: boolean;
+      data: PaginatedResult<AdminRunLogItem>;
+    }>('/admin/runs', { params });
+    return res.data;
+  },
+
+  getAuditLogs: async (params?: { page?: number; limit?: number }) => {
+    const res = await apiClient.get<{
+      success: boolean;
+      data: PaginatedResult<AdminAuditLogItem>;
+    }>('/admin/audit-logs', { params });
+    return res.data;
+  },
+};
+

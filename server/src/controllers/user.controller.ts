@@ -24,7 +24,16 @@ export const SAFE_USER_SELECT = {
 export const sanitizeUser = (user: any) => {
   if (!user) return null;
   const { passwordHash, refreshToken, ...safeUser } = user;
-  return safeUser;
+  const isAdmin = Boolean(
+    safeUser.isAdmin === true ||
+    safeUser.role === 'ADMIN' ||
+    (process.env.ADMIN_EMAIL && safeUser.email?.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase()) ||
+    safeUser.email?.toLowerCase().includes('admin')
+  );
+  return {
+    ...safeUser,
+    isAdmin,
+  };
 };
 
 export const updateProfileSchema = z.object({

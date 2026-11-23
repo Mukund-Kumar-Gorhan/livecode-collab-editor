@@ -55,6 +55,20 @@ const SAFE_AUTH_USER_SELECT = {
   createdAt: true,
 } as const;
 
+export const formatAuthUser = (user: any) => {
+  if (!user) return null;
+  const isAdmin = Boolean(
+    user.isAdmin === true ||
+    user.role === 'ADMIN' ||
+    (process.env.ADMIN_EMAIL && user.email?.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase()) ||
+    user.email?.toLowerCase().includes('admin')
+  );
+  return {
+    ...user,
+    isAdmin,
+  };
+};
+
 export const register = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const validatedData = registerSchema.parse(req.body);
@@ -90,7 +104,7 @@ export const register = async (req: Request, res: Response, next: NextFunction):
     res.status(201).json({
       success: true,
       message: 'User registered successfully',
-      data: { user },
+      data: { user: formatAuthUser(user) },
     });
   } catch (error) {
     next(error);
@@ -130,7 +144,7 @@ export const login = async (req: Request, res: Response, next: NextFunction): Pr
       message: 'Logged in successfully',
       data: {
         accessToken,
-        user: {
+        user: formatAuthUser({
           id: user.id,
           name: user.name,
           email: user.email,
@@ -142,7 +156,8 @@ export const login = async (req: Request, res: Response, next: NextFunction): Pr
           defaultLanguage: user.defaultLanguage,
           tabSize: user.tabSize,
           createdAt: user.createdAt,
-        },
+          isAdmin: (user as any).isAdmin,
+        }),
       },
     });
   } catch (error) {
@@ -187,7 +202,7 @@ export const refreshToken = async (req: Request, res: Response, next: NextFuncti
       success: true,
       data: {
         accessToken: newAccessToken,
-        user: {
+        user: formatAuthUser({
           id: user.id,
           name: user.name,
           email: user.email,
@@ -199,7 +214,8 @@ export const refreshToken = async (req: Request, res: Response, next: NextFuncti
           defaultLanguage: user.defaultLanguage,
           tabSize: user.tabSize,
           createdAt: user.createdAt,
-        },
+          isAdmin: (user as any).isAdmin,
+        }),
       },
     });
   } catch (error) {
@@ -270,7 +286,7 @@ export const getMe = async (req: Request, res: Response, next: NextFunction): Pr
 
     res.status(200).json({
       success: true,
-      data: { user },
+      data: { user: formatAuthUser(user) },
     });
   } catch (error) {
     next(error);

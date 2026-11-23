@@ -7,6 +7,7 @@ import { errorHandler } from './middleware/errorHandler.js';
 import { authRouter } from './routes/auth.routes.js';
 import { roomRouter } from './routes/room.routes.js';
 import { userRouter } from './routes/user.routes.js';
+import { adminRouter } from './routes/admin.routes.js';
 import path from 'path';
 
 export const app = express();
@@ -76,6 +77,7 @@ app.get('/health/runner', runnerHealthHandler);
 app.use('/api/auth', authRouter);
 app.use('/api/rooms', roomRouter);
 app.use('/api/users', userRouter);
+app.use('/api/admin', adminRouter);
 
 // Centralized error handling
 app.use(errorHandler);

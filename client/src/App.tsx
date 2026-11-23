@@ -7,6 +7,13 @@ import { DashboardPage } from './pages/DashboardPage';
 import { RoomPage } from './pages/RoomPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { AdminRoute } from './components/AdminRoute';
+import { AdminLayout } from './pages/admin/AdminLayout';
+import { AdminOverviewPage } from './pages/admin/AdminOverviewPage';
+import { AdminUsersPage } from './pages/admin/AdminUsersPage';
+import { AdminRoomsPage } from './pages/admin/AdminRoomsPage';
+import { AdminRunsPage } from './pages/admin/AdminRunsPage';
+import { AdminAuditPage } from './pages/admin/AdminAuditPage';
 import { ToastContainer } from './components/ToastContainer';
 
 export const App: React.FC = () => {
@@ -60,6 +67,22 @@ export const App: React.FC = () => {
             </ProtectedRoute>
           }
         />
+
+        {/* Protected Admin Routes */}
+        <Route
+          path="/admin"
+          element={
+            <AdminRoute>
+              <AdminLayout />
+            </AdminRoute>
+          }
+        >
+          <Route index element={<AdminOverviewPage />} />
+          <Route path="users" element={<AdminUsersPage />} />
+          <Route path="rooms" element={<AdminRoomsPage />} />
+          <Route path="runs" element={<AdminRunsPage />} />
+          <Route path="audit" element={<AdminAuditPage />} />
+        </Route>
 
         {/* Catch-all fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />

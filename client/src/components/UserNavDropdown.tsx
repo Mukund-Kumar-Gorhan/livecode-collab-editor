@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { LogOut, Settings, Palette, ChevronDown } from 'lucide-react';
+import { LogOut, Settings, Palette, ChevronDown, Shield } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { getUserInitials, getUserColor } from '../utils/colors';
 import { ThemeSwitcher } from './ThemeSwitcher';
@@ -66,12 +66,29 @@ export const UserNavDropdown: React.FC = () => {
         <div className="absolute right-0 mt-2 w-56 rounded-xl bg-app-surface border border-app-border shadow-2xl p-1.5 z-50 animate-in fade-in zoom-in-95 duration-100 divide-y divide-app-border">
           {/* User info banner */}
           <div className="px-3 py-2">
-            <p className="text-xs font-bold text-app-text truncate">{displayName}</p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold text-app-text truncate">{displayName}</p>
+              {user?.isAdmin && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-app-accent/20 text-app-accent border border-app-accent/30 tracking-wide uppercase">
+                  Admin
+                </span>
+              )}
+            </div>
             <p className="text-[11px] text-app-text-muted truncate">{user?.email}</p>
           </div>
 
           {/* Links */}
           <div className="py-1">
+            {user?.isAdmin && (
+              <Link
+                to="/admin"
+                onClick={() => setIsOpen(false)}
+                className="flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs text-app-accent hover:text-app-text hover:bg-app-accent/10 transition-colors font-medium mb-0.5"
+              >
+                <Shield className="w-4 h-4 text-app-accent" />
+                <span className="font-semibold">Admin Panel</span>
+              </Link>
+            )}
             <Link
               to="/profile"
               onClick={() => setIsOpen(false)}
