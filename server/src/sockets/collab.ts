@@ -471,3 +471,22 @@ export const kickMemberFromCollab = (shortId: string, userId: string): void => {
   });
   logger.info(`Kicked user ${userId} from live collab room ${shortId}`);
 };
+
+/**
+ * Closes all live WebSocket connections across all rooms for a disabled user.
+ */
+export const kickUserFromAllCollab = (userId: string): void => {
+  docs.forEach((doc, shortId) => {
+    let closedCount = 0;
+    doc.conns.forEach((meta, conn) => {
+      if (meta.userId === userId) {
+        doc.getMap('roles').set(userId, 'KICKED');
+        closeConn(doc, conn);
+        closedCount++;
+      }
+    });
+    if (closedCount > 0) {
+      logger.info(`Terminated ${closedCount} active connection(s) for disabled user ${userId} in room ${shortId}`);
+    }
+  });
+};

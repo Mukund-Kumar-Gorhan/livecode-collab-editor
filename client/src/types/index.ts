@@ -20,6 +20,8 @@ export interface User {
   defaultLanguage?: SupportedLanguage;
   tabSize?: number;
   isAdmin?: boolean;
+  isDisabled?: boolean;
+  lastLoginAt?: string | null;
   status?: 'ACTIVE' | 'DISABLED';
   createdAt?: string;
   updatedAt?: string;
@@ -174,6 +176,18 @@ export interface AdminAuditLogItem {
   targetId: string;
   targetName?: string | null;
   details?: string;
+}
+
+export interface AdminLoginLogItem {
+  id: string;
+  userId?: string | null;
+  userName?: string | null;
+  email: string;
+  success: boolean;
+  ip?: string | null;
+  userAgent?: string | null;
+  isAdmin: boolean;
+  timestamp: string;
 }
 
 export interface PaginatedResult<T> {

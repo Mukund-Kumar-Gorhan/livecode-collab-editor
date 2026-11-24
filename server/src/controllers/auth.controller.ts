@@ -52,21 +52,53 @@ const SAFE_AUTH_USER_SELECT = {
   editorFontSize: true,
   defaultLanguage: true,
   tabSize: true,
+  isAdmin: true,
+  isDisabled: true,
+  lastLoginAt: true,
   createdAt: true,
 } as const;
 
 export const formatAuthUser = (user: any) => {
   if (!user) return null;
-  const isAdmin = Boolean(
-    user.isAdmin === true ||
-    user.role === 'ADMIN' ||
-    (process.env.ADMIN_EMAIL && user.email?.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase()) ||
-    user.email?.toLowerCase().includes('admin')
-  );
   return {
     ...user,
-    isAdmin,
+    isAdmin: Boolean(user.isAdmin),
+    isDisabled: Boolean(user.isDisabled),
+    lastLoginAt: user.lastLoginAt || null,
   };
+};
+
+export const getRequestClientInfo = (req: Request) => {
+  const forwarded = req.headers['x-forwarded-for'];
+  const ip = typeof forwarded === 'string'
+    ? forwarded.split(',')[0].trim()
+    : Array.isArray(forwarded)
+    ? forwarded[0]
+    : req.ip || req.socket.remoteAddress || null;
+  const userAgent = (req.headers['user-agent'] as string) || null;
+  return { ip, userAgent };
+};
+
+export const recordLoginLog = async (params: {
+  email: string;
+  success: boolean;
+  userId?: string | null;
+  ip?: string | null;
+  userAgent?: string | null;
+}) => {
+  try {
+    await prisma.loginLog.create({
+      data: {
+        email: params.email.toLowerCase(),
+        success: params.success,
+        userId: params.userId || null,
+        ip: params.ip || null,
+        userAgent: params.userAgent || null,
+      },
+    });
+  } catch (err) {
+    console.error('Failed to record login log:', err);
+  }
 };
 
 export const register = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -114,27 +146,64 @@ export const register = async (req: Request, res: Response, next: NextFunction):
 export const login = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const validatedData = loginSchema.parse(req.body);
+    const { ip, userAgent } = getRequestClientInfo(req);
 
     const user = await prisma.user.findUnique({
       where: { email: validatedData.email },
     });
 
     if (!user) {
+      await recordLoginLog({
+        email: validatedData.email,
+        success: false,
+        ip,
+        userAgent,
+      });
       throw new ApiError('Invalid email or password', 401, 'INVALID_CREDENTIALS');
     }
 
     const isMatch = await bcrypt.compare(validatedData.password, user.passwordHash);
     if (!isMatch) {
+      await recordLoginLog({
+        email: validatedData.email,
+        success: false,
+        userId: user.id,
+        ip,
+        userAgent,
+      });
       throw new ApiError('Invalid email or password', 401, 'INVALID_CREDENTIALS');
+    }
+
+    if (user.isDisabled) {
+      await recordLoginLog({
+        email: validatedData.email,
+        success: false,
+        userId: user.id,
+        ip,
+        userAgent,
+      });
+      throw new ApiError('Account disabled. Please contact an administrator.', 403, 'ACCOUNT_DISABLED');
     }
 
     const tokenPayload = { userId: user.id, email: user.email };
     const accessToken = generateAccessToken(tokenPayload);
     const refreshToken = generateRefreshToken(tokenPayload);
+    const now = new Date();
 
     await prisma.user.update({
       where: { id: user.id },
-      data: { refreshToken },
+      data: {
+        refreshToken,
+        lastLoginAt: now,
+      },
+    });
+
+    await recordLoginLog({
+      email: user.email,
+      success: true,
+      userId: user.id,
+      ip,
+      userAgent,
     });
 
     res.cookie(REFRESH_COOKIE_NAME, refreshToken, getRefreshCookieOptions(req));
@@ -156,7 +225,113 @@ export const login = async (req: Request, res: Response, next: NextFunction): Pr
           defaultLanguage: user.defaultLanguage,
           tabSize: user.tabSize,
           createdAt: user.createdAt,
-          isAdmin: (user as any).isAdmin,
+          isAdmin: user.isAdmin,
+          isDisabled: user.isDisabled,
+          lastLoginAt: now,
+        }),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const adminLogin = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const validatedData = loginSchema.parse(req.body);
+    const { ip, userAgent } = getRequestClientInfo(req);
+
+    const user = await prisma.user.findUnique({
+      where: { email: validatedData.email },
+    });
+
+    if (!user) {
+      await recordLoginLog({
+        email: validatedData.email,
+        success: false,
+        ip,
+        userAgent,
+      });
+      throw new ApiError('Invalid email or password', 401, 'INVALID_CREDENTIALS');
+    }
+
+    const isMatch = await bcrypt.compare(validatedData.password, user.passwordHash);
+    if (!isMatch) {
+      await recordLoginLog({
+        email: validatedData.email,
+        success: false,
+        userId: user.id,
+        ip,
+        userAgent,
+      });
+      throw new ApiError('Invalid email or password', 401, 'INVALID_CREDENTIALS');
+    }
+
+    if (user.isDisabled) {
+      await recordLoginLog({
+        email: validatedData.email,
+        success: false,
+        userId: user.id,
+        ip,
+        userAgent,
+      });
+      throw new ApiError('Account disabled. Please contact an administrator.', 403, 'ACCOUNT_DISABLED');
+    }
+
+    if (!user.isAdmin) {
+      await recordLoginLog({
+        email: validatedData.email,
+        success: false,
+        userId: user.id,
+        ip,
+        userAgent,
+      });
+      throw new ApiError('Access denied: Not an administrator account', 403, 'NOT_AN_ADMIN');
+    }
+
+    const tokenPayload = { userId: user.id, email: user.email };
+    const accessToken = generateAccessToken(tokenPayload);
+    const refreshToken = generateRefreshToken(tokenPayload);
+    const now = new Date();
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        refreshToken,
+        lastLoginAt: now,
+      },
+    });
+
+    await recordLoginLog({
+      email: user.email,
+      success: true,
+      userId: user.id,
+      ip,
+      userAgent,
+    });
+
+    res.cookie(REFRESH_COOKIE_NAME, refreshToken, getRefreshCookieOptions(req));
+
+    res.status(200).json({
+      success: true,
+      message: 'Admin authenticated successfully',
+      data: {
+        accessToken,
+        user: formatAuthUser({
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          bio: user.bio,
+          avatarColor: user.avatarColor,
+          avatarUrl: user.avatarUrl,
+          theme: user.theme,
+          editorFontSize: user.editorFontSize,
+          defaultLanguage: user.defaultLanguage,
+          tabSize: user.tabSize,
+          createdAt: user.createdAt,
+          isAdmin: user.isAdmin,
+          isDisabled: user.isDisabled,
+          lastLoginAt: now,
         }),
       },
     });
@@ -186,6 +361,10 @@ export const refreshToken = async (req: Request, res: Response, next: NextFuncti
 
     if (!user || user.refreshToken !== token) {
       throw new ApiError('Refresh token revoked or invalid', 401, 'UNAUTHORIZED');
+    }
+
+    if (user.isDisabled) {
+      throw new ApiError('Account disabled. Please contact an administrator.', 403, 'ACCOUNT_DISABLED');
     }
 
     const newAccessToken = generateAccessToken({ userId: user.id, email: user.email });
@@ -282,6 +461,10 @@ export const getMe = async (req: Request, res: Response, next: NextFunction): Pr
 
     if (!user) {
       throw new ApiError('User not found', 404, 'USER_NOT_FOUND');
+    }
+
+    if (user.isDisabled) {
+      throw new ApiError('Account disabled. Please contact an administrator.', 403, 'ACCOUNT_DISABLED');
     }
 
     res.status(200).json({

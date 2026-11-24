@@ -14,6 +14,8 @@ import { AdminUsersPage } from './pages/admin/AdminUsersPage';
 import { AdminRoomsPage } from './pages/admin/AdminRoomsPage';
 import { AdminRunsPage } from './pages/admin/AdminRunsPage';
 import { AdminAuditPage } from './pages/admin/AdminAuditPage';
+import { AdminLoginHistoryPage } from './pages/admin/AdminLoginHistoryPage';
+import { AdminLoginPage } from './pages/admin/AdminLoginPage';
 import { ToastContainer } from './components/ToastContainer';
 
 export const App: React.FC = () => {
@@ -29,6 +31,7 @@ export const App: React.FC = () => {
         {/* Public Routes */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/admin/login" element={<AdminLoginPage />} />
 
         {/* Protected Dashboard Routes */}
         <Route
@@ -82,6 +85,7 @@ export const App: React.FC = () => {
           <Route path="rooms" element={<AdminRoomsPage />} />
           <Route path="runs" element={<AdminRunsPage />} />
           <Route path="audit" element={<AdminAuditPage />} />
+          <Route path="logins" element={<AdminLoginHistoryPage />} />
         </Route>
 
         {/* Catch-all fallback */}

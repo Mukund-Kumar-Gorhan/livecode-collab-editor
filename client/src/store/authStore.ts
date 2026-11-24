@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { User } from '../types';
-import { authApi, userApi, injectAuthStore } from '../services/api';
+import { authApi, userApi, adminApi, injectAuthStore } from '../services/api';
 import { useThemeStore } from './themeStore';
 
 interface AuthState {
@@ -9,6 +9,7 @@ interface AuthState {
   isLoading: boolean;
   isInitialized: boolean;
   login: (email: string, password: string) => Promise<void>;
+  adminLogin: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string, inviteCode?: string) => Promise<void>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
@@ -46,6 +47,25 @@ export const useAuthStore = create<AuthState>((set, get) => {
       set({ isLoading: true });
       try {
         const response = await authApi.login({ email, password });
+        const loggedUser = response.data.user;
+        set({
+          user: loggedUser,
+          accessToken: response.data.accessToken,
+          isLoading: false,
+        });
+        if (loggedUser.theme) {
+          useThemeStore.getState().initTheme(loggedUser.theme);
+        }
+      } catch (error) {
+        set({ isLoading: false });
+        throw error;
+      }
+    },
+
+    adminLogin: async (email: string, password: string) => {
+      set({ isLoading: true });
+      try {
+        const response = await adminApi.login({ email, password });
         const loggedUser = response.data.user;
         set({
           user: loggedUser,

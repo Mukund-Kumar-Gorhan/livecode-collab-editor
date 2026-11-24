@@ -6,6 +6,7 @@ import {
   Layers,
   Terminal,
   ShieldCheck,
+  History,
   ArrowLeft,
   Shield,
   X,
@@ -42,6 +43,11 @@ const NAV_ITEMS = [
     path: '/admin/audit',
     name: 'Audit Log',
     icon: ShieldCheck,
+  },
+  {
+    path: '/admin/logins',
+    name: 'Login History',
+    icon: History,
   },
 ];
 

@@ -27,6 +27,12 @@ vi.mock('../config/prisma.js', () => {
         update: vi.fn(),
         delete: vi.fn(),
       },
+      loginLog: {
+        create: vi.fn(),
+      },
+      auditLog: {
+        create: vi.fn(),
+      },
     },
   };
 });

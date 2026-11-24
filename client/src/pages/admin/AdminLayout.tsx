@@ -26,6 +26,10 @@ const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
     title: 'Audit Trail',
     subtitle: 'Security and administrative action logs',
   },
+  '/admin/logins': {
+    title: 'Login History',
+    subtitle: 'Audit trail of developer and administrator login attempts',
+  },
 };
 
 export const AdminLayout: React.FC = () => {

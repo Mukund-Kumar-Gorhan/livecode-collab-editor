@@ -43,30 +43,12 @@ export const requireAdmin = async (req: Request, res: Response, next: NextFuncti
     return next(new ApiError('Authorization token required', 401, 'UNAUTHORIZED'));
   }
 
-  let isAdmin = req.user.isAdmin === true;
+  const dbUser = await prisma.user.findUnique({
+    where: { id: req.user.id },
+    select: { id: true, isAdmin: true, isDisabled: true },
+  });
 
-  if (!isAdmin) {
-    try {
-      const dbUser = await prisma.user.findUnique({
-        where: { id: req.user.id },
-      });
-      if (dbUser && ((dbUser as any).isAdmin === true || (dbUser as any).role === 'ADMIN')) {
-        isAdmin = true;
-      }
-    } catch {
-      // In case db is mocked or offline
-    }
-  }
-
-  // Also check admin email pattern or env var
-  if (!isAdmin) {
-    const adminEmail = process.env.ADMIN_EMAIL || 'admin@livecode.dev';
-    if (req.user.email.toLowerCase() === adminEmail.toLowerCase() || req.user.email.toLowerCase().includes('admin')) {
-      isAdmin = true;
-    }
-  }
-
-  if (!isAdmin) {
+  if (!dbUser || dbUser.isDisabled || !dbUser.isAdmin) {
     return next(new ApiError('Forbidden: Admin access required', 403, 'FORBIDDEN'));
   }
 

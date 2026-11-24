@@ -116,6 +116,7 @@ export const AdminRunsPage: React.FC = () => {
             <option value="javascript">JavaScript</option>
             <option value="java">Java</option>
             <option value="cpp">C++</option>
+            <option value="c">C</option>
           </select>
 
           {/* Status filter dropdown */}

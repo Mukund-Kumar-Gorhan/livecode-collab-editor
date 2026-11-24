@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { authenticate, requireAdmin } from '../middleware/auth.js';
+import { adminLoginRateLimiter } from '../middleware/rateLimiter.js';
+import { adminLogin } from '../controllers/auth.controller.js';
 import {
   getAdminStats,
   getAdminUsers,
@@ -10,14 +12,18 @@ import {
   deleteAdminRoom,
   getAdminRuns,
   getAdminAuditLogs,
+  getAdminLoginLogs,
 } from '../controllers/admin.controller.js';
 
 export const adminRouter = Router();
 
-// Protect all admin routes with authentication and requireAdmin middleware
+// Dedicated Admin Portal Login with Rate Limiting (public endpoint)
+adminRouter.post('/login', adminLoginRateLimiter, adminLogin);
+
+// Protect all following administration endpoints
 adminRouter.use(authenticate, requireAdmin);
 
-// Overview Stats
+// Overview Telemetry & Metrics
 adminRouter.get('/stats', getAdminStats);
 
 // Users management
@@ -33,5 +39,8 @@ adminRouter.delete('/rooms/:shortId', deleteAdminRoom);
 // Run Logs
 adminRouter.get('/runs', getAdminRuns);
 
-// Audit Logs
+// Audit Trail
 adminRouter.get('/audit-logs', getAdminAuditLogs);
+
+// Login History
+adminRouter.get('/login-logs', getAdminLoginLogs);

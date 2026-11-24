@@ -10,6 +10,7 @@ import {
   AdminRoomListItem,
   AdminRunLogItem,
   AdminAuditLogItem,
+  AdminLoginLogItem,
   PaginatedResult,
 } from '../types';
 
@@ -362,6 +363,28 @@ export const adminApi = {
       success: boolean;
       data: PaginatedResult<AdminAuditLogItem>;
     }>('/admin/audit-logs', { params });
+    return res.data;
+  },
+
+  login: async (payload: { email: string; password: string }) => {
+    const res = await apiClient.post<{
+      success: boolean;
+      message: string;
+      data: { accessToken: string; user: User };
+    }>('/admin/login', payload);
+    return res.data;
+  },
+
+  getLoginLogs: async (params?: {
+    search?: string;
+    status?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const res = await apiClient.get<{
+      success: boolean;
+      data: PaginatedResult<AdminLoginLogItem>;
+    }>('/admin/login-logs', { params });
     return res.data;
   },
 };

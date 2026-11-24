@@ -52,3 +52,18 @@ export const profileRateLimiter = rateLimit({
   },
 });
 
+export const adminLoginRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // max 10 admin login attempts per 15 minutes per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      message: 'Too many admin login attempts from this IP. Please try again after 15 minutes.',
+      code: 'ADMIN_RATE_LIMIT_EXCEEDED',
+    });
+  },
+});
+
+
