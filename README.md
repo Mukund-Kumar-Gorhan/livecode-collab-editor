@@ -2,6 +2,7 @@
 
 Write and run code together in real time. Multiple users edit the same project
 at once (like Google Docs), and the code runs safely inside Docker sandboxes.
+Includes an admin panel to monitor and manage the platform.
 
 ![LiveCode](docs/screenshot.png)
 
@@ -27,10 +28,21 @@ at once (like Google Docs), and the code runs safely inside Docker sandboxes.
 - stdin input box (works with `scanf`, `cin`, `input()`, `Scanner`)
 - Output is shared with every user in the room
 
+**Admin panel** (`/admin`)
+- Separate admin login; only accounts with `isAdmin` can enter
+- Overview: total users, rooms, runs today, active now, success rate, usage charts
+- Users: search, disable / enable, make or revoke admin, delete
+- Rooms and run logs with filters (language, status)
+- Login history: who logged in, when, from which IP and device, success or failure
+- Audit log of every admin action
+- Disabling a user also ends their sessions and closes their live connections
+
 **Accounts and UI**
 - JWT auth (access + refresh token), editable profile
 - 5 themes: Midnight, Light, Dracula, One Dark, Cyberpunk
 - Responsive layout that works on phones
+
+![Admin panel](docs/admin.png)
 
 ## Architecture
 
@@ -65,8 +77,12 @@ Runner service (:4000)  --->  Docker sandbox container (one per run)
 - The runner accepts requests only with a shared secret header
 - Roles are enforced on the server: a Viewer's edits are rejected on the
   WebSocket, not only disabled in the UI
-- Rate limiting on runs, Zod input validation, path traversal checks on
-  uploads and runs
+- Admin access is decided only by the `isAdmin` flag in the database, checked
+  on the server for every admin request. Admin accounts can only be created
+  with a command line script, never through the public API
+- Disabled accounts cannot log in; their sessions and sockets are closed
+- Rate limiting (runs, login, admin login), Zod input validation, path
+  traversal checks on uploads and runs
 - Optional invite code for registration (`REGISTRATION_CODE`)
 
 ## Setup
@@ -107,6 +123,17 @@ Run the tests:
 npx vitest run
 ```
 
+## Create an admin account
+
+Admins are created only from the command line:
+
+```bash
+npm run make-admin -- admin@example.com YourStrongPassword
+```
+
+Then open http://localhost:5173/admin and sign in. Use a strong password and do
+not reuse the example above.
+
 ## Share publicly with Cloudflare Tunnel
 
 The app runs on your own machine. A quick tunnel gives it a temporary public
@@ -126,6 +153,8 @@ cloudflared tunnel --url http://localhost:5173
 Notes:
 - Only port 5173 is tunnelled. The runner (4000) and database (5432) stay private.
 - The link changes every time and stops when you close the tunnel (`Ctrl + C`).
+- The admin login page is reachable through the tunnel as well. Use a strong
+  admin password, or close the tunnel while you do admin work.
 - Anyone with the link can run code on your machine. Set `REGISTRATION_CODE`
   in `.env` and share the link only with people you trust.
 
@@ -133,7 +162,7 @@ Notes:
 
 ```
 client/     React + TypeScript + Vite + Tailwind + Monaco
-server/     Express, Yjs WebSocket server, Prisma, auth, rooms
+server/     Express, Yjs WebSocket server, Prisma, auth, rooms, admin API
 runner/     Code execution service (Docker)
 docker/     Sandbox Dockerfiles for each language
 docs/       Architecture notes and screenshots
@@ -151,6 +180,8 @@ Prisma, PostgreSQL, Docker, Vitest
 - Program input must be written in the Input box before pressing Run
   (there is no interactive terminal yet)
 - C files are currently compiled with the C++ toolchain (g++)
+- Refresh tokens are stored in the database as plain text; a production
+  version should store only a hash
 - Runs from a single machine, not deployed to a cloud server
 
 ## Roadmap
@@ -163,6 +194,7 @@ Prisma, PostgreSQL, Docker, Vitest
 - [x] Themes, profile and mobile layout
 - [x] Members panel with live role changes
 - [x] Public sharing via Cloudflare Tunnel
+- [x] Admin panel with login history and audit log
 - [ ] Interactive terminal
 - [ ] Native gcc for C, more languages (TypeScript, Go)
 - [ ] Redis for horizontal scaling
